@@ -1,0 +1,30 @@
+# Python style library management
+import someLibrary as sl
+
+print sl.foo()
+
+# Variable types inferred
+x = 3.5
+
+# Loop (range keyword? - exact syntax undecided)
+for i in range(5):
+    # Automatic int->float conversion
+    x = x + i
+
+while x > 10:
+    x = x/2.
+
+# More complex equations
+y = 4.5
+y = 2.**(y+2) - 11./2
+
+# Explicit typecasting
+z = Int(y)
+
+# Simple printing
+print x
+print y
+print x, y
+
+# Native math functions
+print sin(x) - exp(-y)
