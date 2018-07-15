@@ -1,0 +1,11 @@
+x = 345./18.
+print x
+print 19.1666
+y = .1*(x-10.00)
+print y
+print .91666
+print y/x
+print 0.0478260869565
+z = 32
+print (32/4-3)*2
+print 10

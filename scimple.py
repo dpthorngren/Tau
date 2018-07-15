@@ -27,34 +27,39 @@ class ASTNode():
             rParen = findMatching(noParens,lParen)
             noParens = statement[:1+lParen] + " "*(rParen-lParen-1) + statement[rParen:]
         # Now, find the operator with the lowest precedence
-        if re.match("^print ",noParens) is not None:
-            # Found a print statement, like "print x+4."
+        if re.match("^print ",noParens) is not None: # Found a print statement, like "print x+4."
             self.op = "print"
             self.children = [(ASTNode(statement[5:],self.parser))]
             return
-        if "=" in noParens:
-            # Found an assignment, e.g. "x = 3.*(4.+5.)"
+        if "=" in noParens: # Found an assignment, e.g. "x = 3.*(4.+5.)"
             self.op = "="
             self.children = [ASTNode(statement.split('=',1)[1],self.parser)]
+            self.dtype = self.children[0].dtype
             return
-        for op in ['-','+','/','*']:
+        for op in ['-','+','/','*']: # Found a basic binary operator, e.g. 34.*x
             if op in noParens:
-                # Found a basic binary operator, e.g. 34.*x
                 self.op = op
                 index = noParens.find(op)
                 self.children = [ASTNode(i,self.parser) for i in [statement[:index],statement[index+1:]]]
+                self.dtype = 'Float' if 'Float' in [i.dtype for i in self.children] else "Int"
                 return
-        if re.match("^\d*$",statement) is not None:
-            # Found an Int literal
-            self.op = "Int"
+        if re.match("^\d*$",noParens) is not None: # Found an Int literal
+            self.op = self.dtype = "Int"
             return
-        if re.match("^\d*\.?\d*$",statement) is not None:
-            # Found a Real literal
-            self.op = "Real"
+        if re.match("^\d*\.?\d*$",noParens) is not None: # Found a Real literal
+            self.op = self.dtype = "Real"
             return
-        if self.parser.getVariable(statement):
-            # Found a variable
+        if self.parser.getVariable(noParens): # Found a variable
+            _, self.dtype, _ = self.parser.getVariable(statement)
             self.op = "Variable"
+            return
+        if '(' in noParens:
+            # TODO: Might be a function
+            self.op = "()"
+            lParen = noParens.find("(")
+            rParen = findMatching(noParens,lParen)
+            self.children = [ASTNode(statement[lParen+1:rParen],self.parser)]
+            self.dtype = self.children[0].dtype
             return
         raise ValueError("ERROR: Can't parse:'{}'.\n".format(statement))
 
@@ -62,9 +67,9 @@ class ASTNode():
     def evaluate(self):
         p = self.parser
         inputs = [i.evaluate() for i in self.children]
-        if self.op is "print":
+        if self.op == "print":
             return self.evalPrintStatement(inputs[0])
-        if self.op is '=':
+        if self.op == '=':
             name = self.statement.split('=')[0].strip()
             if inputs[0] not in types.keys():
                 left = p.newVariable(name,inputs[0][1],self.isGlobal)
@@ -78,15 +83,17 @@ class ASTNode():
             return types[inputs[0][1]], p.getVariable(inputs[0][0]), out
         if self.op in ['-','+','/','*']:
             return self.simpleBinary(self.op,inputs[0],inputs[1])
-        if self.op is "Int":
+        if self.op == "Int":
             return int(self.statement), "Int", ""
-        if self.op is "Real":
+        if self.op == "Real":
             return float(self.statement), "Real", ""
-        if self.op is "Variable":
+        if self.op == "Variable":
             addr = p.newRegister()
             var = p.getVariable(self.statement)
             out = "{} = load {}, {}* {}\n".format(addr,types[var[1]], types[var[1]], var[0])
             return addr, var[1], out
+        if self.op == "()":
+            return self.children[0].evaluate()
         raise ValueError("Internal Error: Unrecognized operator code {}".format(self.op))
 
 
