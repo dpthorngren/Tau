@@ -1,14 +1,252 @@
 import llvmlite.binding as llvm
-import subprocess
 from ctypes import CFUNCTYPE, c_int
+import subprocess
 import sys
 import os
 import re
-import math
+
+# Language operator definitions
+types = {'Real':'double','Int':'i32'}
+globalInit = {'Real':'1.0','Int':'1'}
+
+class ASTNode():
+    def __init__(self,statement,parser,isGlobal=False):
+        statement = statement.strip()
+        # Keep reference to parent parser and statement
+        self.isGlobal = isGlobal
+        self.statement = statement
+        self.parser = parser
+        self.children = []
+        # Remove parentheses contents, so that we won't find operators inside
+        noParens = statement
+        while True:
+            lParen = re.search(r'\((?!\s*\))',noParens)
+            if lParen is None:
+                break
+            lParen = lParen.start()
+            rParen = findMatching(noParens,lParen)
+            noParens = statement[:1+lParen] + " "*(rParen-lParen-1) + statement[rParen:]
+        # Now, find the operator with the lowest precedence
+        if re.match("^print ",noParens) is not None:
+            # Found a print statement, like "print x+4."
+            self.op = "print"
+            self.children = [(ASTNode(statement[5:],self.parser))]
+            return
+        if "=" in noParens:
+            # Found an assignment, e.g. "x = 3.*(4.+5.)"
+            self.op = "="
+            self.children = [ASTNode(statement.split('=',1)[1],self.parser)]
+            return
+        for op in ['-','+','/','*']:
+            if op in noParens:
+                # Found a basic binary operator, e.g. 34.*x
+                self.op = op
+                index = noParens.find(op)
+                self.children = [ASTNode(i,self.parser) for i in [statement[:index],statement[index+1:]]]
+                return
+        if re.match("^\d*$",statement) is not None:
+            # Found an Int literal
+            self.op = "Int"
+            return
+        if re.match("^\d*\.?\d*$",statement) is not None:
+            # Found a Real literal
+            self.op = "Real"
+            return
+        if self.parser.getVariable(statement):
+            # Found a variable
+            self.op = "Variable"
+            return
+        raise ValueError("ERROR: Can't parse:'{}'.\n".format(statement))
+
+
+    def evaluate(self):
+        p = self.parser
+        inputs = [i.evaluate() for i in self.children]
+        if self.op is "print":
+            return self.evalPrintStatement(inputs[0])
+        if self.op is '=':
+            name = self.statement.split('=')[0].strip()
+            if inputs[0] not in types.keys():
+                left = p.newVariable(name,inputs[0][1],self.isGlobal)
+            elif types[inputs[0][1]] != types[left[1]]:
+                raise ValueError("ERROR: variable type {} does not match right side type {}.\n".format(left[1],inputs[0][1]))
+            else:
+                left = p.getVariable[left]
+            out = left[2] + inputs[0][2]
+            out += "store {} {}, {}* {}\n".format(
+                types[inputs[0][1]],inputs[0][0],types[left[1]],left[0])
+            return types[inputs[0][1]], p.getVariable(inputs[0][0]), out
+        if self.op in ['-','+','/','*']:
+            return self.simpleBinary(self.op,inputs[0],inputs[1])
+        if self.op is "Int":
+            return int(self.statement), "Int", ""
+        if self.op is "Real":
+            return float(self.statement), "Real", ""
+        if self.op is "Variable":
+            addr = p.newRegister()
+            var = p.getVariable(self.statement)
+            out = "{} = load {}, {}* {}\n".format(addr,types[var[1]], types[var[1]], var[0])
+            return addr, var[1], out
+        raise ValueError("Internal Error: Unrecognized operator code {}".format(self.op))
+
+
+    def simpleBinary(self,op,left,right):
+        addr = self.parser.newRegister()
+        if left[1] != right[1] or any([i not in types.keys() for i in [left[1], right[1]]]):
+            raise ValueError("ERROR: Cannot {} types {} and {}".format(op,left[1],right[1]))
+        dtype = left[1]
+        function = {'+':"add","*":"mul","/":"div","-":"sub"}[op]
+        if dtype is "Real":
+            function = 'f'+function
+        elif op is '/':
+            function = 's'+function
+        out = left[2] + right[2]
+        out += "{} = {} {} {}, {}\n".format(
+            addr,function,types[dtype],left[0],right[0])
+        return addr, dtype, out
+
+
+    def evalPrintStatement(self,right):
+        self.parser.header.add('declare i32 @printf(i8* nocapture readonly, ...)')
+        out = right[2]
+        if right[1] == "Real":
+            self.parser.header.add('@printFloat = external global [4 x i8]')
+            out += "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printFloat, i32 0, i32 0), double {})".format(right[0])
+        elif right[1] == "Int":
+            self.parser.header.add('@printInt = external global [4 x i8]')
+            out += "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i32 {})".format(right[0])
+        return None, None, out
+
+
+class Parser():
+    def __init__(self,emitIR):
+        self.emitIR = emitIR
+        self.numRegisters = 0
+        self.localVars = {}
+        self.globalVars = {}
+        self.header = set([])
+
+
+    def newVariable(self, name, dtype, isGlobal=False):
+        if re.match("^[a-zA-Z][\w\d]*$",name) is None:
+            raise ValueError("ERROR: {} is not a valid variable name.".format(name))
+        if isGlobal:
+            self.globalVars[name] = dtype
+            name = "@usr_{}".format(name)
+            self.header.add('{} = global {} {}\n'.format(name,types[dtype],globalInit[dtype]))
+            out = ""
+        else:
+            self.localVars[name] = dtype
+            name = "%usr_{}".format(name)
+            out = "{} = alloca {}\n".format(name,types[dtype])
+        return name, dtype, out
+
+
+    def getVariable(self, name):
+        '''Checks if a variable exists, and returns the name and dtype if so.'''
+        if name in self.globalVars.keys():
+            dtype = self.globalVars[name]
+            self.header.add('@usr_{} = external global {}\n'.format(name,types[dtype]))
+            return "@usr_{}".format(name), self.globalVars[name], ""
+        elif name in self.localVars.keys():
+            return "%usr_{}".format(name), self.localVars[name], ""
+        return None
+
+
+    def newRegister(self,dtype=None,data=None):
+        name = "%reg_{}".format(self.numRegisters)
+        self.numRegisters += 1
+        return name
+
+
+    def runJIT(self):
+	# Setup the execution engine
+        llvm.initialize()
+        llvm.initialize_native_target()
+        llvm.initialize_native_asmprinter()
+        out = 'declare i32 @printf(i8* nocapture readonly, ...)\n'
+        out += '@printFloat = global [4 x i8] c"%f\\0A\\00\"\n'
+        out += '@printInt = global [4 x i8] c"%i\\0A\\00"\n'
+	target = llvm.Target.from_default_triple()
+	target_machine = target.create_target_machine()
+	owner = llvm.parse_assembly(out)
+	jit = llvm.create_mcjit_compiler(owner, target_machine)
+
+        # Begin the main parsing loop
+        print "ScimpleJit 0.000001"
+        print "Almost no features, massively buggy.  Good luck!"
+        jitFunctionCounter = 0
+        while True:
+            # Retrieve input from the user, sanity check it
+            sys.stdout.write('\033[95m\033[1mscimple>\033[0m ')
+            instructions = sys.stdin.readline()
+            if not instructions:
+                break
+            instructions = instructions.strip()
+            if instructions == "":
+                continue
+            # Convert the input into LLVM IR
+            try:
+                ir = ASTNode(instructions,self,True).evaluate()
+            except ValueError, e:
+                print str(e).strip()
+                self.resetModule()
+                continue
+            # Compile the resulting IR
+            newFuncName = "jit_{}".format(jitFunctionCounter)
+            out = "\n".join(self.header) + '\n'
+            out += "define i32 @{}()".format(newFuncName)+"{\n"
+            out += "\n".join(["    "+l for l in ir[2].splitlines()]) + '\n'
+            out += "    ret i32 0\n}\n"
+            if self.emitIR:
+                print out
+            # Now compile and run the code
+            try:
+                mod = llvm.parse_assembly(out)
+                jit.add_module(mod)
+            except RuntimeError, e:
+                print "ERROR:", str(e).strip()
+                continue
+            jitFunctionCounter += 1
+            # Call the recently added function
+            (CFUNCTYPE(c_int)(jit.get_function_address(newFuncName)))()
+            self.resetModule()
+        print ""
+
+
+    def resetModule(self):
+        self.localVars = {}
+        self.header = set([])
+
+
+    def parseFile(self, filename):
+        # Header information
+        out = 'declare i32 @printf(i8* nocapture readonly, ...)\n'
+        out += '@printFloat = private unnamed_addr constant [4 x i8] c"%f\\0A\\00\"\n'
+        out += '@printInt = private unnamed_addr constant [4 x i8] c"%i\\0A\\00"\n\n'
+        # Declare the main function and populated it with code
+        out += "define i32 @main(){\n" 
+        sourceFile = open(filename,'r')
+        for line in sourceFile:
+            ir = ASTNode(line,self).evaluate()
+            if ir != "":
+                out += "\n".join(["    "+l for l in ir[2].splitlines()]) + '\n'
+        sourceFile.close()
+        # End the main function
+        out += "    ret i32 0\n}"
+        if self.emitIR:
+            print out
+            return
+        tempFile = "/tmp/" + os.path.splitext(os.path.basename(filename))[0]
+        f = open(tempFile+".ll",'w')
+        f.write(out)
+        f.close()
+        subprocess.call(["llc", tempFile+".ll", "--filetype=obj", "-o", tempFile+".o"])
+        subprocess.call(["gcc", tempFile+".o"])
 
 
 def findMatching(s,start=0,left='(',right=')'):
-    level = 1
+    level = 0
     for i, c in enumerate(s[start:]):
         if c == left:
             level += 1
@@ -19,251 +257,7 @@ def findMatching(s,start=0,left='(',right=')'):
     raise ValueError("More {} than {}".format(left,right))
 
 
-class ASTNode():
-    def __init__(self,parent):
-        children = []
-
-
-class Parser():
-    # Language operator definitions
-    functions = {'+':"add","*":"mul","/":"div","-":"sub"}
-    types = {'Real':'double','Int':'i32'}
-
-
-    def __init__(self,emitIR):
-        llvm.initialize()
-        llvm.initialize_native_target()
-        llvm.initialize_native_asmprinter()
-        self.emitIR = emitIR
-        self.regnum = 0
-        self.varTypes = {}
-        self.globalVars = False
-        return
-
-
-    def tovar(self,name):
-        if self.globalVars:
-            # return"@usr_{}".format(name)
-            return"@{}".format(name)
-        else:
-            return"%usr_{}".format(name)
-
-
-    def newRegister(self,dtype=None,data=None):
-        name = "%reg_{}".format(self.regnum)
-        self.regnum += 1
-        return name
-
-
-    def simpleBinary(self,op,statement):
-        addr = self.newRegister()
-        left, right = [self.parseStatement(i) for i in statement.split(op,1)]
-        if left[1] != right[1] or any([i not in self.types.keys() for i in [left[1], right[1]]]):
-            raise ValueError("ERROR: Cannot add types {} and {}".format(left[1],right[1]))
-        dtype = left[1]
-        function = self.functions[op]
-        if dtype=="Real":
-            function = 'f'+function
-        elif op == '/':
-            function = 's'+function
-        out = left[2] + right[2]
-        out += "{} = {} {} {}, {}\n".format(
-            addr,function,self.types[dtype],left[0],right[0])
-        return addr, dtype, out
-
-
-    def declareVariable(self,name,dtype):
-        # Sanity check the inputs
-        # dtype, name = statement.strip().split(" ",1)
-        if name in self.varTypes.keys():
-            raise ValueError("ERROR: Variable {} is already declared.".format(name))
-        # Check that name is a valid variable name
-        if re.match("^[a-zA-Z][\w\d]*$",name) is None:
-            raise ValueError("ERROR: {} is not a valid variable name.".format(name))
-        self.varTypes[name] = dtype
-        out = "{} = alloca {}\n".format(self.tovar(name),self.types[dtype])
-        return name, dtype, out
-
-
-    def addPrintStatement(self,statement,right=None):
-        if right is None:
-            right = self.parseStatement(statement[5:])
-        out = right[2]
-        if right[1] == "Real":
-            out += "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printFloat, i32 0, i32 0), double {})".format(right[0])
-        elif right[1] == "Int":
-            out += "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i32 {})".format(right[0])
-        return None, None, out
-
-
-    def parseStatement(self,statement):
-        # Remove comments
-        statement = re.sub(r'#.*','',statement)
-        # Remove duplicate whitespace
-        statement = re.sub(r'(?<=\S) +',' ',statement,flags=re.MULTILINE)
-        # Remove whitespace from beginning and end
-        statement = statement.strip()
-        # Stop if line is now blank
-        if statement == "":
-            return None, None, ""
-
-        # Now, find the operator with the highest precedence
-        if re.match("^print ",statement) is not None:
-            return self.addPrintStatement(statement)
-        if "=" in statement:
-            left, right = statement.split("=")
-            left = left.strip()
-            right = self.parseStatement(right)
-            # Check whether we're declaring a variable too
-            # if any([i in left for i in self.types.keys()]):
-                # left = self.declareVariable(left)
-            if left not in self.types.keys():
-                left = self.declareVariable(left,right[1])
-            elif self.types[right[1]] != self.types[left[1]]:
-                raise ValueError("ERROR: variable type {} does not match right side type {}.\n".format(left[1],right[1]))
-            else:
-                left = left, self.varTypes[left], ""
-            out = left[2] + right[2]
-            out += "store {} {}, {}* {}\n".format(
-                self.types[right[1]],right[0],self.types[left[1]],self.tovar(left[0]))
-            return self.types[right[1]], self.tovar(right[0]), out
-        for op in ['-','+','/','*']:
-            if op in statement:
-                return self.simpleBinary(op,statement)
-        # if any([op in statement for op in self.types]):
-            # return self.declareVariable(statement)
-        if re.match("^\d*$",statement) is not None: # Int literal
-            return int(statement), "Int", ""
-        if re.match("^\d*\.?\d*$",statement) is not None: # Real literal
-            return float(statement), "Real", ""
-        if statement in self.varTypes.keys():
-            addr = self.newRegister()
-            dtype = self.varTypes[statement]
-            out = "{} = load {}, {}* {}\n".format(
-                addr,self.types[dtype], self.types[dtype], self.tovar(statement))
-            return addr, dtype, out
-        raise ValueError("ERROR: Can't parse:'{}'.\n".format(statement))
-
-
-    def preprocess(self,instructions):
-        '''Temporarily useless until I add support for blocks.'''
-        # Remove any duplicate or trailing whitespace
-        instructions = instructions.rstrip()
-        # Remove duplicated whitespace
-        instructions = re.sub(r'(?<=\S) +',' ',instructions,flags=re.MULTILINE)
-        # Verify that the indentation is in multiples of four
-        for linenumber, line in enumerate(instructions.splitlines()):
-            if (len(line) - len(line.lstrip()))%4 != 0:
-                raise ValueError("ERROR: line {} is not indented to a multiple of four.".format(1+linenumber))
-        # Add in line numbers
-        numbered = []
-        numColWidth = 2+int(math.log10(len(instructions.splitlines())))
-        for n, line in enumerate(instructions.splitlines()):
-            numbered.append('{}'.format(n+1).ljust(numColWidth)+ line)
-        instructions = "\n".join(numbered)
-        # Remove comments
-        instructions = re.sub(r'#.*','',instructions)
-        # Join lines separated by a '\'
-        instructions = re.sub(r'\\\n\d*\s*','',instructions)
-        # Eliminate lines containing nothing or only whitespace
-        instructions = re.sub(r'^\d*\s*\n','',instructions,flags=re.MULTILINE)
-        instructions = re.sub(r'\n\d*\s*$','',instructions,flags=re.MULTILINE)
-        # TODO: check that there is only one = per line?
-        return instructions, numColWidth
-
-
-    def runJIT(self):
-        print "ScimpleJit 0.000001"
-        print "Almost no features, massively buggy.  Good luck!"
-
-	# Setup the execution engine
-        out = 'declare i32 @printf(i8* nocapture readonly, ...)\n'
-        out += '@printFloat = global [4 x i8] c"%f\\0A\\00\"\n'
-        out += '@printInt = global [4 x i8] c"%i\\0A\\00"\n'
-        out += '@someVar = global double 3.5\n'
-	target = llvm.Target.from_default_triple()
-	target_machine = target.create_target_machine()
-	owner = llvm.parse_assembly(out)
-	jit = llvm.create_mcjit_compiler(owner, target_machine)
-        out = ""
-        self.varTypes['someVar'] = "Real"
-
-        jitFunctionCounter = 0
-        self.globalVars = False
-        while True:
-            sys.stdout.write('\033[95m\033[1mscimple>\033[0m ')
-            instructions = sys.stdin.readline()
-            # TODO: Fancier command line
-            # instructions = prompt_toolkit.prompt(u"Input> ")
-            if not instructions:
-                break
-            if instructions.strip() == "":
-                continue
-            newFuncName = "jit_{}".format(jitFunctionCounter)
-            out = 'declare i32 @printf(i8* nocapture readonly, ...)\n'
-            # out += '@printFloat = global [4 x i8] c"%f\\0A\\00\"\n'
-            # out += '@printInt = global [4 x i8] c"%i\\0A\\00"\n'
-            out += '@printFloat = external global [4 x i8]\n'
-            out += '@printInt = external global [4 x i8]\n'
-            out += '@someVar = external global double\n'
-            out += "define i32 @{}()".format(newFuncName)+"{\n"
-            try:
-                ir =  self.parseStatement(instructions)
-                if ir[1] in ["Real", "Int"]:
-                    ir = self.addPrintStatement("",ir)
-            except ValueError, e:
-                print str(e).strip()
-                continue
-            out += "\n".join(["    "+l for l in ir[2].splitlines()]) + '\n'
-            out += "    ret i32 0\n}\n"
-            if self.emitIR:
-                print out
-            # out += "RUN jit_{}\n".format(jitFunctionCounter)
-            try:
-                mod = llvm.parse_assembly(out)
-                jit.add_module(mod)
-            except RuntimeError, e:
-                print "ERROR:", str(e).strip()
-                continue
-            jitFunctionCounter += 1
-            out = ""
-            # Call the recently added function
-            newFuncPtr = jit.get_function_address(newFuncName)
-            newFunc = CFUNCTYPE(c_int)(newFuncPtr)
-            newFunc()
-        print ""
-        return
-
-
-    def parseFile(self, filename):
-        # out += "\n".join(["    "+i for i in ir.splitlines()])
-        # Header information
-        out = 'declare i32 @printf(i8* nocapture readonly, ...)\n'
-        out += '@printFloat = private unnamed_addr constant [4 x i8] c"%f\\0A\\00\"\n'
-        out += '@printInt = private unnamed_addr constant [4 x i8] c"%i\\0A\\00"\n\n'
-        # Declare the main function and populated it with code
-        out += "define i32 @main(){\n" 
-        sourceFile = open(filename,'r')
-        for line in sourceFile:
-            ir = self.parseStatement(line)
-            if ir != "":
-                out += "\n".join(["    "+l for l in ir[2].splitlines()]) + '\n'
-        sourceFile.close()
-        # End the main function
-        out += "    ret i32 0\n}"
-        if self.emitIR:
-            print out
-            return
-        tempFile = "/tmp/" + os.path.splitext(filename)[0]
-        f = open(tempFile+".ll",'w')
-        f.write(out)
-        f.close()
-        subprocess.call(["llc", tempFile+".ll", "--filetype=obj", "-o", tempFile+".o"])
-        subprocess.call(["gcc", tempFile+".o"])
-
-
 if __name__ == "__main__":
-    header = ""
     args = sys.argv
     emitIR = "--emit-ir" in args
     args = list(set(args)-set(["--emit-ir"]))
