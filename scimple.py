@@ -71,12 +71,11 @@ class ASTNode():
             return self.evalPrintStatement(inputs[0])
         if self.op == '=':
             name = self.statement.split('=')[0].strip()
-            if inputs[0] not in types.keys():
+            left = p.getVariable(name)
+            if left is None:
                 left = p.newVariable(name,inputs[0][1],self.isGlobal)
             elif types[inputs[0][1]] != types[left[1]]:
                 raise ValueError("ERROR: variable type {} does not match right side type {}.\n".format(left[1],inputs[0][1]))
-            else:
-                left = p.getVariable[left]
             out = left[2] + inputs[0][2]
             out += "store {} {}, {}* {}\n".format(
                 types[inputs[0][1]],inputs[0][0],types[left[1]],left[0])
@@ -194,7 +193,10 @@ class Parser():
                 continue
             # Convert the input into LLVM IR
             try:
-                ir = ASTNode(instructions,self,True).evaluate()
+                ast = ASTNode(instructions,self,True)
+                ir = ast.evaluate()
+                if ir[1] in types.keys():
+                    ir = ast.evalPrintStatement(ir)
             except ValueError, e:
                 print str(e).strip()
                 self.resetModule()

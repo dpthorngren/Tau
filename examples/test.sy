@@ -9,3 +9,9 @@ print 0.0478260869565
 z = 32
 print (32/4-3)*2
 print 10
+z = z-12
+print z
+print 20
+y = y + 1.
+print y
+print 1.91666
