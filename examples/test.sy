@@ -8,10 +8,14 @@ print y/x
 print 0.0478260869565
 z = 32
 print (32/4-3)*2
-print 10
+print 10.
 z = z-12
 print z
 print 20
 y = y + 1.
 print y
 print 1.91666
+print y/z
+print .09583333
+print (23/2) + 4.*1.5 -11
+print 6.5

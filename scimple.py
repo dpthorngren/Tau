@@ -5,18 +5,22 @@ import sys
 import os
 import re
 
-# Language operator definitions
+# Language definitions
 types = {'Real':'double','Int':'i32'}
 globalInit = {'Real':'1.0','Int':'1'}
+conversions = {"RealInt":[True,"{} = fptosi double {} to i32\n"],
+               "IntReal":[False,"{} = sitofp i32 {} to double\n"]}
 
 class ASTNode():
-    def __init__(self,statement,parser,isGlobal=False):
+    def __init__(self,statement,parser,isGlobal=False,manualInit=False):
         statement = statement.strip()
         # Keep reference to parent parser and statement
         self.isGlobal = isGlobal
         self.statement = statement
         self.parser = parser
         self.children = []
+        if manualInit:
+            return
         # Remove parentheses contents, so that we won't find operators inside
         noParens = statement
         while True:
@@ -36,13 +40,21 @@ class ASTNode():
             self.children = [ASTNode(statement.split('=',1)[1],self.parser)]
             self.dtype = self.children[0].dtype
             return
-        for op in ['-','+','/','*']: # Found a basic binary operator, e.g. 34.*x
+        for op in ['-','+','%','*']: # Found a basic binary operator, e.g. 34.*x
             if op in noParens:
                 self.op = op
                 index = noParens.find(op)
                 self.children = [ASTNode(i,self.parser) for i in [statement[:index],statement[index+1:]]]
-                self.dtype = 'Float' if 'Float' in [i.dtype for i in self.children] else "Int"
+                self.dtype = 'Real' if 'Real' in [i.dtype for i in self.children] else "Int"
+                self.children = [i.castTo(self.dtype) for i in self.children]
                 return
+        # if op == '//': TODO, once explicit conversions are implemented, which happens when functions are implemented
+        if '/' in noParens:
+            self.op = '/'
+            index = noParens.find('/')
+            self.dtype = "Real"
+            self.children = [ASTNode(i,self.parser).castTo("Real") for i in [statement[:index],statement[index+1:]]]
+            return
         if re.match("^\d*$",noParens) is not None: # Found an Int literal
             self.op = self.dtype = "Int"
             return
@@ -80,7 +92,7 @@ class ASTNode():
             out += "store {} {}, {}* {}\n".format(
                 types[inputs[0][1]],inputs[0][0],types[left[1]],left[0])
             return types[inputs[0][1]], p.getVariable(inputs[0][0]), out
-        if self.op in ['-','+','/','*']:
+        if self.op in ['-','+','*','/','%']:
             return self.simpleBinary(self.op,inputs[0],inputs[1])
         if self.op == "Int":
             return int(self.statement), "Int", ""
@@ -93,6 +105,11 @@ class ASTNode():
             return addr, var[1], out
         if self.op == "()":
             return self.children[0].evaluate()
+        if self.op == "Convert":
+            addr = self.parser.newRegister()
+            out = inputs[0][2]
+            out += conversions[inputs[0][1]+self.dtype][1].format(addr,inputs[0][0])
+            return addr, self.dtype, out
         raise ValueError("Internal Error: Unrecognized operator code {}".format(self.op))
 
 
@@ -101,10 +118,10 @@ class ASTNode():
         if left[1] != right[1] or any([i not in types.keys() for i in [left[1], right[1]]]):
             raise ValueError("ERROR: Cannot {} types {} and {}".format(op,left[1],right[1]))
         dtype = left[1]
-        function = {'+':"add","*":"mul","/":"div","-":"sub"}[op]
+        function = {'+':"add","*":"mul","%":"rem",'/':'div',"-":"sub"}[op]
         if dtype is "Real":
             function = 'f'+function
-        elif op is '/':
+        if op in ['%','/'] and dtype is "Int":
             function = 's'+function
         out = left[2] + right[2]
         out += "{} = {} {} {}, {}\n".format(
@@ -122,6 +139,21 @@ class ASTNode():
             self.parser.header.add('@printInt = external global [4 x i8]')
             out += "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i32 {})".format(right[0])
         return None, None, out
+
+    def castTo(self,dtype,force=False):
+        if self.dtype == dtype:
+            return self
+        try:
+            c = conversions[self.dtype+dtype]
+        except KeyError:
+            raise KeyError("ERROR: Cannot convert type {} to type {}.".format(self.dtype,dtype))
+        if c[0] and not force:
+            raise KeyError("ERROR: Won't automatically convert type {} to type {}.".format(self.dtype,dtype))
+        converterNode = ASTNode(self.statement,self.parser,self.isGlobal,True)
+        converterNode.children = [self]
+        converterNode.dtype = dtype
+        converterNode.op = "Convert"
+        return converterNode
 
 
 class Parser():
