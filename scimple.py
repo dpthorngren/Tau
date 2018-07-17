@@ -1,6 +1,8 @@
+#!/usr/bin/python
 import llvmlite.binding as llvm
 from ctypes import CFUNCTYPE, c_int
 import subprocess
+import argparse
 import sys
 import os
 import re
@@ -25,6 +27,8 @@ class ASTNode():
         self.children = []
         if manualInit:
             return
+        if parser.debugAST:
+            print statement
         # Remove parentheses contents, so that we won't find operators inside
         noParens = statement
         while True:
@@ -213,12 +217,13 @@ class ASTNode():
 
 
 class Parser():
-    def __init__(self,emitIR):
-        self.emitIR = emitIR
+    def __init__(self,debugIR=False,debugAST=False,quiet=False):
+        self.debugIR = debugIR
+        self.debugAST = debugAST
+        self.quiet = quiet
         self.numRegisters = 0
-        self.localVars = {}
         self.globalVars = {}
-        self.header = set([])
+        self.resetModule()
 
 
     def newVariable(self, name, dtype, isGlobal=False):
@@ -267,12 +272,14 @@ class Parser():
 	jit = llvm.create_mcjit_compiler(owner, target_machine)
 
         # Begin the main parsing loop
-        print "ScimpleJit 0.000001"
-        print "Almost no features, massively buggy.  Good luck!"
         jitFunctionCounter = 0
+        if not self.quiet:
+            print "ScimpleREPL 0.000001"
+            print "Almost no features, massively buggy.  Good luck!"
         while True:
             # Retrieve input from the user, sanity check it
-            sys.stdout.write('\033[95m\033[1mscimple>\033[0m ')
+            if not self.quiet:
+                sys.stdout.write('\033[95m\033[1mscimple>\033[0m ')
             instructions = sys.stdin.readline()
             if not instructions:
                 break
@@ -283,7 +290,7 @@ class Parser():
             try:
                 ast = ASTNode(instructions,self,True)
                 ir = ast.evaluate()
-                if ir[1] in types.keys():
+                if ir[1] in types.keys() and not self.quiet:
                     ir = ast.evalPrintStatement(ir)
             except ValueError, e:
                 print str(e).strip()
@@ -295,7 +302,7 @@ class Parser():
             out += "define i32 @{}()".format(newFuncName)+"{\n"
             out += "\n".join(["    "+l for l in ir[2].splitlines()]) + '\n'
             out += "    ret i32 0\n}\n"
-            if self.emitIR:
+            if self.debugIR:
                 print out
             # Now compile and run the code
             try:
@@ -316,7 +323,7 @@ class Parser():
         self.header = set([])
 
 
-    def parseFile(self, filename):
+    def parseFile(self, filename,outputFile="a.out"):
         # Header information
         out = 'declare i32 @printf(i8* nocapture readonly, ...)\n'
         out += '@printFloat = private unnamed_addr constant [4 x i8] c"%f\\0A\\00\"\n'
@@ -331,7 +338,7 @@ class Parser():
         sourceFile.close()
         # End the main function
         out += "    ret i32 0\n}"
-        if self.emitIR:
+        if self.debugIR:
             print out
             return
         tempFile = "/tmp/" + os.path.splitext(os.path.basename(filename))[0]
@@ -339,7 +346,7 @@ class Parser():
         f.write(out)
         f.close()
         subprocess.call(["llc", tempFile+".ll", "--filetype=obj", "-O3","-o", tempFile+".o"])
-        subprocess.call(["gcc", tempFile+".o"])
+        subprocess.call(["gcc", tempFile+".o",'-o',outputFile])
 
 
 def findMatching(s,start=0,left='(',right=')'):
@@ -355,14 +362,21 @@ def findMatching(s,start=0,left='(',right=')'):
 
 
 if __name__ == "__main__":
-    args = sys.argv
-    emitIR = "--emit-ir" in args
-    args = list(set(args)-set(["--emit-ir"]))
-    p = Parser(emitIR)
-    if len(args) == 1:
+    # Parse the command line arguments
+    ap = argparse.ArgumentParser(description="Compiles Scimple code or starts a REPL session.")
+    ap.add_argument("filename",nargs='?',help="The file to compile; if absent, start a REPL session.")
+    ap.add_argument("--debug-ir",action='store_true',help="Print IR code immediately after it is generated.")
+    ap.add_argument("--debug-ast",action='store_true',help="Print the string passed to initialize each abstract syntax tree node.")
+    ap.add_argument("--quiet",action='store_true',help="Do not print non-essential output (like REPL prompts)")
+    ap.add_argument("--output",help="The name of the compiled file to write.",default="a.out")
+    args = ap.parse_args()
+
+    # Startup the parser and compile or run a REPL
+    p = Parser(args.debug_ir,args.debug_ast,args.quiet)
+    if args.filename:
+        p.parseFile(args.filename,args.output)
+    else:
         try:
             p.runJIT()
         except EOFError, KeyboardInterrupt:
             print ""
-    else:
-        p.parseFile(sys.argv[1])
