@@ -6,10 +6,14 @@ import os
 import re
 
 # Language definitions
-types = {'Real':'double','Int':'i32'}
-globalInit = {'Real':'1.0','Int':'1'}
+types = {'Real':'double','Int':'i32','Bool':'i1'}
+globalInit = {'Real':'1.0','Int':'1','Bool':'false'}
 conversions = {"RealInt":[True,"{} = fptosi double {} to i32\n"],
-               "IntReal":[False,"{} = sitofp i32 {} to double\n"]}
+               "IntReal":[False,"{} = sitofp i32 {} to double\n"],
+               "RealBool":[True,"{} = fcmp one double {}, 0.0\n"],
+               "IntBool":[False,"{} = icmp ne i32 {}, 0\n"],
+               "BoolReal":[False,"{} = uitofp i1 {} to double\n"],
+               "BoolInt":[False,"{} = zext i1 {} to i32\n"]}
 
 class ASTNode():
     def __init__(self,statement,parser,isGlobal=False,manualInit=False):
@@ -30,16 +34,31 @@ class ASTNode():
             lParen = lParen.start()
             rParen = findMatching(noParens,lParen)
             noParens = statement[:1+lParen] + " "*(rParen-lParen-1) + statement[rParen:]
+        # print noParens
         # Now, find the operator with the lowest precedence
-        if re.match("^print ",noParens) is not None: # Found a print statement, like "print x+4."
+        if re.match("^print ",noParens): # Found a print statement, like "print x+4."
             self.op = "print"
             self.children = [(ASTNode(statement[5:],self.parser))]
             return
-        if "=" in noParens: # Found an assignment, e.g. "x = 3.*(4.+5.)"
+        match = re.match(r'(?<![<>])=',noParens)
+        if match: # Found an assignment, e.g. "x = 3.*(4.+5.)"
             self.op = "="
-            self.children = [ASTNode(statement.split('=',1)[1],self.parser)]
+            self.children = [ASTNode(statement[match.start()+1:],self.parser)]
             self.dtype = self.children[0].dtype
             return
+        for op in ['<=','>=','<','>','!=','==']: # Found a comparison, e.g. 3==4
+            if op in noParens:
+                self.op = op
+                index = noParens.find(op)
+                self.children = [ASTNode(i,self.parser) for i in [statement[:index],statement[index+len(op):]]]
+                childType = "Bool"
+                if 'Real' in [i.dtype for i in self.children]:
+                    childType = 'Real'
+                elif 'Int' in [i.dtype for i in self.children]:
+                    childType = 'Int'
+                self.children = [i.castTo(childType) for i in self.children]
+                self.dtype = "Bool"
+                return
         for op in ['-','+','%','*']: # Found a basic binary operator, e.g. 34.*x
             if op in noParens:
                 self.op = op
@@ -55,17 +74,21 @@ class ASTNode():
             self.dtype = "Real"
             self.children = [ASTNode(i,self.parser).castTo("Real") for i in [statement[:index],statement[index+1:]]]
             return
-        if re.match("^\d*$",noParens) is not None: # Found an Int literal
+        if re.match("^\d*$",noParens): # Found an Int literal
             self.op = self.dtype = "Int"
             return
-        if re.match("^\d*\.?\d*$",noParens) is not None: # Found a Real literal
+        if re.match("^\d*\.?\d*$",noParens): # Found a Real literal
             self.op = self.dtype = "Real"
+            return
+        if noParens.strip() in ['True','False']: # Found a Bool literal
+            self.op = self.dtype = "Bool"
             return
         if self.parser.getVariable(noParens): # Found a variable
             _, self.dtype, _ = self.parser.getVariable(statement)
             self.op = "Variable"
             return
         if '(' in noParens:
+            # TODO: Buggily ignores if stuff is still outside the parentheses
             # TODO: Might be a function
             self.op = "()"
             lParen = noParens.find("(")
@@ -92,12 +115,16 @@ class ASTNode():
             out += "store {} {}, {}* {}\n".format(
                 types[inputs[0][1]],inputs[0][0],types[left[1]],left[0])
             return types[inputs[0][1]], p.getVariable(inputs[0][0]), out
+        if self.op in ['<=','>=','<','>','!=','==']: # Found a comparison, e.g. 3==4
+            return self.comparison(self.op,inputs[0],inputs[1])
         if self.op in ['-','+','*','/','%']:
             return self.simpleBinary(self.op,inputs[0],inputs[1])
         if self.op == "Int":
             return int(self.statement), "Int", ""
         if self.op == "Real":
             return float(self.statement), "Real", ""
+        if self.op == "Bool":
+            return self.statement.strip().lower(), "Bool", ""
         if self.op == "Variable":
             addr = p.newRegister()
             var = p.getVariable(self.statement)
@@ -113,20 +140,35 @@ class ASTNode():
         raise ValueError("Internal Error: Unrecognized operator code {}".format(self.op))
 
 
+    def comparison(self,op,left,right):
+        addr = self.parser.newRegister()
+        if left[1] != right[1] or any([i not in types.keys() for i in [left[1], right[1]]]):
+            raise ValueError("ERROR: Cannot {} types {} and {}".format(op,left[1],right[1]))
+        if left[1] == "Real":
+            function = 'fcmp '+{'<=':'ole','>=':'oge','<':'olt','>':'ogt','!=':'one','==':'oeq'}[op]
+        elif left[1] == "Int":
+            function = 'icmp '+{'<=':'sle','>=':'sge','<':'slt','>':'sgt','!=':'ne','==':'eq'}[op]
+        elif left[1] == "Bool":
+            function = 'icmp '+{'<=':'ule','>=':'uge','<':'ult','>':'ugt','!=':'ne','==':'eq'}[op]
+        out = left[2] + right[2]
+        out += "{} = {} {} {}, {}\n".format(addr,function,types[left[1]],left[0],right[0])
+        return addr, self.dtype, out
+
+
+
     def simpleBinary(self,op,left,right):
         addr = self.parser.newRegister()
         if left[1] != right[1] or any([i not in types.keys() for i in [left[1], right[1]]]):
             raise ValueError("ERROR: Cannot {} types {} and {}".format(op,left[1],right[1]))
-        dtype = left[1]
         function = {'+':"add","*":"mul","%":"rem",'/':'div',"-":"sub"}[op]
-        if dtype is "Real":
+        if self.dtype is "Real":
             function = 'f'+function
-        if op in ['%','/'] and dtype is "Int":
+        if op in ['%','/'] and self.dtype is "Int":
             function = 's'+function
         out = left[2] + right[2]
         out += "{} = {} {} {}, {}\n".format(
-            addr,function,types[dtype],left[0],right[0])
-        return addr, dtype, out
+            addr,function,types[self.dtype],left[0],right[0])
+        return addr, self.dtype, out
 
 
     def evalPrintStatement(self,right):
@@ -138,6 +180,9 @@ class ASTNode():
         elif right[1] == "Int":
             self.parser.header.add('@printInt = external global [4 x i8]')
             out += "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i32 {})".format(right[0])
+        elif right[1] == "Bool":
+            self.parser.header.add('@printInt = external global [4 x i8]')
+            out += "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i1 {})".format(right[0])
         return None, None, out
 
     def castTo(self,dtype,force=False):
@@ -166,7 +211,7 @@ class Parser():
 
 
     def newVariable(self, name, dtype, isGlobal=False):
-        if re.match("^[a-zA-Z][\w\d]*$",name) is None:
+        if re.match("^[a-zA-Z][\w\d]*$",name):
             raise ValueError("ERROR: {} is not a valid variable name.".format(name))
         if isGlobal:
             self.globalVars[name] = dtype
@@ -282,7 +327,7 @@ class Parser():
         f = open(tempFile+".ll",'w')
         f.write(out)
         f.close()
-        subprocess.call(["llc", tempFile+".ll", "--filetype=obj", "-o", tempFile+".o"])
+        subprocess.call(["llc", tempFile+".ll", "--filetype=obj", "-O3","-o", tempFile+".o"])
         subprocess.call(["gcc", tempFile+".o"])
 
 
