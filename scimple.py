@@ -37,13 +37,13 @@ class ASTNode():
                 break
             lParen = lParen.start()
             rParen = findMatching(noParens,lParen)
-            noParens = statement[:1+lParen] + " "*(rParen-lParen-1) + statement[rParen:]
+            noParens = noParens[:1+lParen] + " "*(rParen-lParen-1) + noParens[rParen:]
         # Now, find the operator with the lowest precedence
         if re.match("^print ",noParens): # Found a print statement, like "print x+4."
             self.op = "print"
             self.children = [(ASTNode(statement[5:],self.parser))]
             return
-        match = re.search(r'(?<![<>])=',noParens)
+        match = re.search(r'(?<![<>=])=(?!=)',noParens)
         if match: # Found an assignment, e.g. "x = 3.*(4.+5.)"
             self.op = "="
             self.children = [ASTNode(statement[match.start()+1:],self.parser)]
@@ -103,6 +103,7 @@ class ASTNode():
             self.op = "()"
             lParen = noParens.find("(")
             rParen = findMatching(noParens,lParen)
+            sys.stdout.flush()
             self.children = [ASTNode(statement[lParen+1:rParen],self.parser)]
             self.dtype = self.children[0].dtype
             return
