@@ -10,12 +10,12 @@ import re
 # Language definitions
 types = {'Real':'double','Int':'i32','Bool':'i1'}
 globalInit = {'Real':'1.0','Int':'1','Bool':'false'}
-conversions = {"RealInt":[True,"{} = fptosi double {} to i32\n"],
-               "IntReal":[False,"{} = sitofp i32 {} to double\n"],
-               "RealBool":[True,"{} = fcmp one double {}, 0.0\n"],
-               "IntBool":[False,"{} = icmp ne i32 {}, 0\n"],
-               "BoolReal":[False,"{} = uitofp i1 {} to double\n"],
-               "BoolInt":[False,"{} = zext i1 {} to i32\n"]}
+conversions = {"RealInt":[True,"{} = fptosi double {} to i32"],
+               "IntReal":[False,"{} = sitofp i32 {} to double"],
+               "RealBool":[True,"{} = fcmp one double {}, 0.0"],
+               "IntBool":[False,"{} = icmp ne i32 {}, 0"],
+               "BoolReal":[False,"{} = uitofp i1 {} to double"],
+               "BoolInt":[False,"{} = zext i1 {} to i32"]}
 
 class ASTNode():
     def __init__(self,statement,parser,isGlobal=False,manualInit=False):
@@ -103,7 +103,6 @@ class ASTNode():
             self.op = "()"
             lParen = noParens.find("(")
             rParen = findMatching(noParens,lParen)
-            sys.stdout.flush()
             self.children = [ASTNode(statement[lParen+1:rParen],self.parser)]
             self.dtype = self.children[0].dtype
             return
@@ -123,35 +122,35 @@ class ASTNode():
             elif types[inputs[0][1]] != types[left[1]]:
                 raise ValueError("ERROR: variable type {} does not match right side type {}.\n".format(left[1],inputs[0][1]))
             out = left[2] + inputs[0][2]
-            out += "store {} {}, {}* {}\n".format(
-                types[inputs[0][1]],inputs[0][0],types[left[1]],left[0])
+            out += ["store {} {}, {}* {}".format(
+                types[inputs[0][1]],inputs[0][0],types[left[1]],left[0])]
             return types[inputs[0][1]], p.getVariable(inputs[0][0]), out
         if self.op in ['and','or','xor']:
             addr = p.newRegister()
             out = inputs[0][2] + inputs[1][2]
-            out += "{} = {} i1 {}, {}\n".format(addr,self.op,inputs[0][0],inputs[1][0])
+            out += ["{} = {} i1 {}, {}".format(addr,self.op,inputs[0][0],inputs[1][0])]
             return addr, "Bool", out
         if self.op in ['<=','>=','<','>','!=','==']:
             return self.comparison(inputs[0],inputs[1])
         if self.op in ['-','+','*','/','%']:
             return self.simpleBinary(inputs[0],inputs[1])
         if self.op == "Int":
-            return int(self.statement), "Int", ""
+            return int(self.statement), "Int", []
         if self.op == "Real":
-            return float(self.statement), "Real", ""
+            return float(self.statement), "Real", []
         if self.op == "Bool":
-            return self.statement.strip().lower(), "Bool", ""
+            return self.statement.strip().lower(), "Bool", []
         if self.op == "Variable":
             addr = p.newRegister()
             var = p.getVariable(self.statement)
-            out = "{} = load {}, {}* {}\n".format(addr,types[var[1]], types[var[1]], var[0])
+            out = ["{} = load {}, {}* {}".format(addr,types[var[1]], types[var[1]], var[0])]
             return addr, var[1], out
         if self.op == "()":
             return self.children[0].evaluate()
         if self.op == "Convert":
             addr = self.parser.newRegister()
             out = inputs[0][2]
-            out += conversions[inputs[0][1]+self.dtype][1].format(addr,inputs[0][0])
+            out += [conversions[inputs[0][1]+self.dtype][1].format(addr,inputs[0][0])]
             return addr, self.dtype, out
         raise ValueError("Internal Error: Unrecognized operator code {}".format(self.op))
 
@@ -167,7 +166,7 @@ class ASTNode():
         elif left[1] == "Bool":
             function = 'icmp '+{'<=':'ule','>=':'uge','<':'ult','>':'ugt','!=':'ne','==':'eq'}[self.op]
         out = left[2] + right[2]
-        out += "{} = {} {} {}, {}\n".format(addr,function,types[left[1]],left[0],right[0])
+        out += ["{} = {} {} {}, {}".format(addr,function,types[left[1]],left[0],right[0])]
         return addr, self.dtype, out
 
 
@@ -182,8 +181,8 @@ class ASTNode():
         if self.op in ['%','/'] and self.dtype is "Int":
             function = 's'+function
         out = left[2] + right[2]
-        out += "{} = {} {} {}, {}\n".format(
-            addr,function,types[self.dtype],left[0],right[0])
+        out += ["{} = {} {} {}, {}".format(
+            addr,function,types[self.dtype],left[0],right[0])]
         return addr, self.dtype, out
 
 
@@ -192,13 +191,13 @@ class ASTNode():
         out = right[2]
         if right[1] == "Real":
             self.parser.header.add('@printFloat = external global [4 x i8]')
-            out += "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printFloat, i32 0, i32 0), double {})".format(right[0])
+            out += ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printFloat, i32 0, i32 0), double {})".format(right[0])]
         elif right[1] == "Int":
             self.parser.header.add('@printInt = external global [4 x i8]')
-            out += "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i32 {})".format(right[0])
+            out += ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i32 {})".format(right[0])]
         elif right[1] == "Bool":
             self.parser.header.add('@printInt = external global [4 x i8]')
-            out += "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i1 {})".format(right[0])
+            out += ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i1 {})".format(right[0])]
         return None, None, out
 
     def castTo(self,dtype,force=False):
@@ -217,14 +216,32 @@ class ASTNode():
         return converterNode
 
 
-class Parser():
+class ScimpleCompiler():
     def __init__(self,debugIR=False,debugAST=False,quiet=False):
         self.debugIR = debugIR
         self.debugAST = debugAST
         self.quiet = quiet
         self.numRegisters = 0
         self.globalVars = {}
+        self.jitFunctionCounter = 0
         self.resetModule()
+
+
+    def parseBlock(sourceStr,jitFunc=None):
+        asts = []
+        sourceStr = sourceStr.strip().splitlines()
+        # Grab block
+        for i, line in enumerate(sourceStr):
+            # TODO: Check if block is starting or stopping
+            asts.append(ASTNode(line,self,jitFunc is not None))
+        ir = [a.evaluate() for a in asts]
+        if jitFunc:
+            out = "define i32 @{}()".format(jitFunc)+"{\n"
+            out += "\n".join(["    "+l for l in ir[2].splitlines()]) + '\n'
+            out += "    ret i32 0\n}\n"
+        else:
+            out = "\n".join(["    "+l for l in ir[2].splitlines()]) + '\n'
+        return out
 
 
     def newVariable(self, name, dtype, isGlobal=False):
@@ -233,12 +250,12 @@ class Parser():
         if isGlobal:
             self.globalVars[name] = dtype
             name = "@usr_{}".format(name)
-            self.header.add('{} = global {} {}\n'.format(name,types[dtype],globalInit[dtype]))
-            out = ""
+            self.header.add('{} = global {} {}'.format(name,types[dtype],globalInit[dtype]))
+            out = []
         else:
             self.localVars[name] = dtype
             name = "%usr_{}".format(name)
-            out = "{} = alloca {}\n".format(name,types[dtype])
+            out = ["{} = alloca {}".format(name,types[dtype])]
         return name, dtype, out
 
 
@@ -246,10 +263,10 @@ class Parser():
         '''Checks if a variable exists, and returns the name and dtype if so.'''
         if name in self.globalVars.keys():
             dtype = self.globalVars[name]
-            self.header.add('@usr_{} = external global {}\n'.format(name,types[dtype]))
-            return "@usr_{}".format(name), self.globalVars[name], ""
+            self.header.add('@usr_{} = external global {}'.format(name,types[dtype]))
+            return "@usr_{}".format(name), self.globalVars[name], []
         elif name in self.localVars.keys():
-            return "%usr_{}".format(name), self.localVars[name], ""
+            return "%usr_{}".format(name), self.localVars[name], []
         return None
 
 
@@ -264,16 +281,15 @@ class Parser():
         llvm.initialize()
         llvm.initialize_native_target()
         llvm.initialize_native_asmprinter()
-        out = 'declare i32 @printf(i8* nocapture readonly, ...)\n'
-        out += '@printFloat = global [4 x i8] c"%f\\0A\\00\"\n'
-        out += '@printInt = global [4 x i8] c"%i\\0A\\00"\n'
+        out = ['declare i32 @printf(i8* nocapture readonly, ...)']
+        out += ['@printFloat = global [4 x i8] c"%f\\0A\\00\"']
+        out += ['@printInt = global [4 x i8] c"%i\\0A\\00"']
 	target = llvm.Target.from_default_triple()
 	target_machine = target.create_target_machine()
-	owner = llvm.parse_assembly(out)
+	owner = llvm.parse_assembly('\n'.join(out))
 	jit = llvm.create_mcjit_compiler(owner, target_machine)
 
         # Begin the main parsing loop
-        jitFunctionCounter = 0
         if not self.quiet:
             print "ScimpleREPL 0.000001"
             print "Almost no features, massively buggy.  Good luck!"
@@ -298,21 +314,22 @@ class Parser():
                 self.resetModule()
                 continue
             # Compile the resulting IR
-            newFuncName = "jit_{}".format(jitFunctionCounter)
-            out = "\n".join(self.header) + '\n'
-            out += "define i32 @{}()".format(newFuncName)+"{\n"
-            out += "\n".join(["    "+l for l in ir[2].splitlines()]) + '\n'
-            out += "    ret i32 0\n}\n"
+            newFuncName = "jit_{}".format(self.jitFunctionCounter)
+            out = list(self.header)
+            out += ["define i32 @{}()".format(newFuncName)+"{"]
+            out += ["    "+l for l in ir[2]]
+            out += ["    ret i32 0\n}"]
+            out = '\n'.join(out)
             if self.debugIR:
                 print out
             # Now compile and run the code
             try:
                 mod = llvm.parse_assembly(out)
                 jit.add_module(mod)
+                self.jitFunctionCounter += 1
             except RuntimeError, e:
                 print "ERROR:", str(e).strip()
                 continue
-            jitFunctionCounter += 1
             # Call the recently added function
             (CFUNCTYPE(c_int)(jit.get_function_address(newFuncName)))()
             self.resetModule()
@@ -326,19 +343,19 @@ class Parser():
 
     def parseFile(self, filename,outputFile="a.out"):
         # Header information
-        out = 'declare i32 @printf(i8* nocapture readonly, ...)\n'
-        out += '@printFloat = private unnamed_addr constant [4 x i8] c"%f\\0A\\00\"\n'
-        out += '@printInt = private unnamed_addr constant [4 x i8] c"%i\\0A\\00"\n\n'
+        out = ['declare i32 @printf(i8* nocapture readonly, ...)']
+        out += ['@printFloat = private unnamed_addr constant [4 x i8] c"%f\\0A\\00\"']
+        out += ['@printInt = private unnamed_addr constant [4 x i8] c"%i\\0A\\00"']
         # Declare the main function and populated it with code
-        out += "define i32 @main(){\n" 
+        out += ["define i32 @main(){"]
         sourceFile = open(filename,'r')
         for line in sourceFile:
             ir = ASTNode(line,self).evaluate()
-            if ir != "":
-                out += "\n".join(["    "+l for l in ir[2].splitlines()]) + '\n'
+            out += ["    "+l for l in ir[2]]
         sourceFile.close()
         # End the main function
-        out += "    ret i32 0\n}"
+        out += ["    ret i32 0\n}"]
+        out = '\n'.join(out)
         if self.debugIR:
             print out
             return
@@ -373,7 +390,7 @@ if __name__ == "__main__":
     args = ap.parse_args()
 
     # Startup the parser and compile or run a REPL
-    p = Parser(args.debug_ir,args.debug_ast,args.quiet)
+    p = ScimpleCompiler(args.debug_ir,args.debug_ast,args.quiet)
     if args.filename:
         p.parseFile(args.filename,args.output)
     else:
