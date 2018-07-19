@@ -255,6 +255,18 @@ class ScimpleCompiler():
             tail += ["br label %if{}_resume".format(n)]
             tail += ["if{}_resume:".format(n,n)]
             self.blockCounter += 1
+        if re.match("^\s*while .*:$",blockHead):
+            preds = []
+            n = self.blockCounter
+            out += ["br label %while{}_condition".format(n)]
+            out += ["while{}_condition:".format(n)]
+            astOutput = ASTNode(blockHead.strip()[5:-1],self,jitMode).castTo("Bool").evaluate()
+            out += astOutput[2]
+            out += ["br i1 {}, label %while{}_then, label %while{}_resume".format(astOutput[0],n,n)]
+            out += ["while{}_then:".format(n)]
+            tail += ["br label %while{}_condition".format(n)]
+            tail += ["while{}_resume:".format(n,n)]
+            self.blockCounter += 1
         elif re.match("^\s*function ",blockHead):
             raise NotImplementedError("Sorry, functions coming soon!")
         else:
