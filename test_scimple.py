@@ -21,7 +21,7 @@ class ScimpleTester(unittest.TestCase):
 
 
     def testSameAsPython(self):
-        # All of these tests should return the same type and value as Python
+        # Commands to test
         expressions = [
             "3 + 435.",
             "24.-23/(5.3/2)*3.",
@@ -38,12 +38,23 @@ class ScimpleTester(unittest.TestCase):
             "(23+(4/3)-(3)/(3.42+12) % 4*True)",
             "False or 18/6 > 2.",
             "5 < 4 and 27 >= 28-1."]
+        commands = 'print '+'\nprint '.join(expressions).strip() + '\n'
+        # Get python results
         pythonResults = map(eval,expressions)
+        # Get REPL results
         p = subprocess.Popen(["python","./scimple.py",'--quiet'],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
-        scimpleResults = p.communicate('\nprint '+'\nprint '.join(expressions)+'\n',timeout=2)[0].strip().splitlines()
+        scimpleResults = p.communicate(commands,timeout=2)[0].strip().splitlines()
         if p.poll():
             p.terminate()
-
+        # Get compiled results
+        f = open("/tmp/scimpleTest.sy",'w')
+        f.write(commands)
+        f.close()
+        subprocess.call(["python","./scimple.py",'/tmp/scimpleTest.sy','--output','/tmp/scimpleTest'])
+        compiledResults = subprocess.check_output('/tmp/scimpleTest').strip().splitlines()
+        # Compiled results should be identical to REPL results
+        self.assertListEqual(scimpleResults,compiledResults)
+        # All of these tests should return the same type and value as Python
         for p, s, e in zip(pythonResults,scimpleResults,expressions):
             if type(p) is float:
                 self.assertIn('.',s,msg=e)
