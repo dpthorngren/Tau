@@ -50,7 +50,7 @@ class ScimpleTester(unittest.TestCase):
         f = open("/tmp/scimpleTest.sy",'w')
         f.write(commands)
         f.close()
-        subprocess.call(["python","./scimple.py",'/tmp/scimpleTest.sy','--output','/tmp/scimpleTest'])
+        self.assertEqual(subprocess.call(["python","./scimple.py",'/tmp/scimpleTest.sy','--output','/tmp/scimpleTest']),0)
         compiledResults = subprocess.check_output('/tmp/scimpleTest').strip().splitlines()
         # Compiled results should be identical to REPL results
         self.assertListEqual(scimpleResults,compiledResults)

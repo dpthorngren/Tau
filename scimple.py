@@ -222,26 +222,54 @@ class ScimpleCompiler():
         self.debugAST = debugAST
         self.quiet = quiet
         self.numRegisters = 0
+        self.blockCounter = 0
         self.globalVars = {}
         self.jitFunctionCounter = 0
         self.resetModule()
 
 
-    def parseBlock(sourceStr,jitFunc=None):
-        asts = []
-        sourceStr = sourceStr.strip().splitlines()
-        # Grab block
-        for i, line in enumerate(sourceStr):
-            # TODO: Check if block is starting or stopping
-            asts.append(ASTNode(line,self,jitFunc is not None))
-        ir = [a.evaluate() for a in asts]
-        if jitFunc:
-            out = "define i32 @{}()".format(jitFunc)+"{\n"
-            out += "\n".join(["    "+l for l in ir[2].splitlines()]) + '\n'
-            out += "    ret i32 0\n}\n"
+    def parseBlock(self,source,level=0):
+        out = []
+        tail = []
+        jitMode = source is sys.stdin
+        # Get the block head
+        while True:
+            if jitMode and not self.quiet:
+                if level==0:
+                    sys.stdout.write('\033[95m\033[1mscimple>\033[0m ')
+                else:
+                    sys.stdout.write((9+4*level)*" ")
+            blockHead = source.readline()
+            if not blockHead or blockHead.strip() == "end":
+                raise EOFError
+            if blockHead.strip() != "":
+                break
+        # Classify the block
+        if re.match("^\s*if .*:$",blockHead):
+            preds = []
+            n = self.blockCounter
+            astOutput = ASTNode(blockHead.strip()[2:-1],self,jitMode).castTo("Bool").evaluate()
+            out += astOutput[2]
+            out += ["br i1 {}, label %if{}_then, label %if{}_resume".format(astOutput[0],n,n)]
+            out += ["if{}_then:".format(n)]
+            tail += ["br label %if{}_resume".format(n)]
+            tail += ["if{}_resume:".format(n,n)]
+            self.blockCounter += 1
+        elif re.match("^\s*function ",blockHead):
+            raise NotImplementedError("Sorry, functions coming soon!")
         else:
-            out = "\n".join(["    "+l for l in ir[2].splitlines()]) + '\n'
-        return out
+            ast = ASTNode(blockHead,self,jitMode)
+            output = ast.evaluate()
+            if level==0 and not self.quiet and jitMode and output[1] in types.keys():
+                output = ast.evalPrintStatement(output)
+            return output[2]
+        # Process the block body
+        while True:
+            try:
+                out += self.parseBlock(source,level+1)
+            except EOFError:
+                break
+        return out + tail
 
 
     def newVariable(self, name, dtype, isGlobal=False):
@@ -263,7 +291,8 @@ class ScimpleCompiler():
         '''Checks if a variable exists, and returns the name and dtype if so.'''
         if name in self.globalVars.keys():
             dtype = self.globalVars[name]
-            self.header.add('@usr_{} = external global {}'.format(name,types[dtype]))
+            if '@usr_{} = global {} {}'.format(name,types[dtype],globalInit[dtype]) not in self.header:
+                self.header.add('@usr_{} = external global {}'.format(name,types[dtype]))
             return "@usr_{}".format(name), self.globalVars[name], []
         elif name in self.localVars.keys():
             return "%usr_{}".format(name), self.localVars[name], []
@@ -294,30 +323,21 @@ class ScimpleCompiler():
             print "ScimpleREPL 0.000001"
             print "Almost no features, massively buggy.  Good luck!"
         while True:
-            # Retrieve input from the user, sanity check it
-            if not self.quiet:
-                sys.stdout.write('\033[95m\033[1mscimple>\033[0m ')
-            instructions = sys.stdin.readline()
-            if not instructions:
-                break
-            instructions = instructions.strip()
-            if instructions == "":
-                continue
-            # Convert the input into LLVM IR
+            # Grab a block and convert it into LLVM IR
             try:
-                ast = ASTNode(instructions,self,True)
-                ir = ast.evaluate()
-                if ir[1] in types.keys() and not self.quiet:
-                    ir = ast.evalPrintStatement(ir)
+                ir = self.parseBlock(sys.stdin,0)
             except ValueError, e:
                 print str(e).strip()
                 self.resetModule()
                 continue
+            except EOFError:
+                break
             # Compile the resulting IR
             newFuncName = "jit_{}".format(self.jitFunctionCounter)
             out = list(self.header)
             out += ["define i32 @{}()".format(newFuncName)+"{"]
-            out += ["    "+l for l in ir[2]]
+            out += ["entry:"]
+            out += ["    "*(':' not in l)+l for l in ir]
             out += ["    ret i32 0\n}"]
             out = '\n'.join(out)
             if self.debugIR:
@@ -348,10 +368,14 @@ class ScimpleCompiler():
         out += ['@printInt = private unnamed_addr constant [4 x i8] c"%i\\0A\\00"']
         # Declare the main function and populated it with code
         out += ["define i32 @main(){"]
+        out += ["entry:"]
         sourceFile = open(filename,'r')
-        for line in sourceFile:
-            ir = ASTNode(line,self).evaluate()
-            out += ["    "+l for l in ir[2]]
+        while True:
+            try:
+                ir = self.parseBlock(sourceFile,0)
+                out += ["    "*(':' not in l)+l for l in ir]
+            except EOFError: # Ran out of code to parse
+                break
         sourceFile.close()
         # End the main function
         out += ["    ret i32 0\n}"]
