@@ -73,16 +73,23 @@ class ASTNode():
             if op in noParens:
                 self.op = op
                 index = noParens.find(op)
-                self.children = [ASTNode(i,self.parser) for i in [statement[:index],statement[index+1:]]]
-                self.dtype = 'Real' if 'Real' in [i.dtype for i in self.children] else "Int"
-                self.children = [i.castTo(self.dtype) for i in self.children]
-                return
+                if noParens[index:index+2] != "**":
+                    self.children = [ASTNode(i,self.parser) for i in [statement[:index],statement[index+1:]]]
+                    self.dtype = 'Real' if 'Real' in [i.dtype for i in self.children] else "Int"
+                    self.children = [i.castTo(self.dtype) for i in self.children]
+                    return
         # if op == '//': TODO, once explicit conversions are implemented, which happens when functions are implemented
         if '/' in noParens:
             self.op = '/'
             index = noParens.find('/')
             self.dtype = "Real"
             self.children = [ASTNode(i,self.parser).castTo("Real") for i in [statement[:index],statement[index+1:]]]
+            return
+        if '**' in noParens:
+            self.op = '**'
+            index = noParens.find('**')
+            self.dtype = "Real"
+            self.children = [ASTNode(i,self.parser).castTo("Real") for i in [statement[:index],statement[index+2:]]]
             return
         if re.match("^\d*$",noParens): # Found an Int literal
             self.op = self.dtype = "Int"
@@ -101,12 +108,15 @@ class ASTNode():
             lParen = noParens.find("(")
             rParen = findMatching(noParens,lParen)
             caller = statement[:lParen].strip()
-            self.op = "()"
             if caller in types.keys(): # Casting to type caller
-                self.children = [ASTNode(statement[lParen+1:rParen],self.parser).castTo(caller,True)]
                 self.dtype = caller
+                self.children = [ASTNode(statement[lParen+1:rParen],self.parser).castTo(caller,True)]
             elif caller != "":
                 self.op = "FUNC " + caller
+                self.children = [ASTNode(statement[lParen+1:rParen],self.parser)]
+                self.dtype = self.children[0].dtype
+            else:
+                self.op = "()"
                 self.children = [ASTNode(statement[lParen+1:rParen],self.parser)]
                 self.dtype = self.children[0].dtype
             return
@@ -138,6 +148,13 @@ class ASTNode():
             return self.comparison(inputs[0],inputs[1])
         if self.op in ['-','+','*','/','%']:
             return self.simpleBinary(inputs[0],inputs[1])
+        if self.op == "**":
+            addr = self.parser.newRegister()
+            t = types[self.dtype]
+            out = inputs[0][2] + inputs[1][2]
+            self.parser.header.add("declare double @llvm.pow.f64(double, double)")
+            out += ["{} = call double @llvm.pow.f64(double {}, double {})".format(addr, inputs[0][0], inputs[1][0])]
+            return addr, self.dtype, out
         if self.op == "Int":
             return int(self.statement), "Int", []
         if self.op == "Real":
@@ -270,7 +287,7 @@ class ScimpleCompiler():
             tail += ["br label %if{}_resume".format(n)]
             tail += ["if{}_resume:".format(n,n)]
             self.blockCounter += 1
-        if re.match("^\s*while .*:$",blockHead):
+        elif re.match("^\s*while .*:$",blockHead):
             preds = []
             n = self.blockCounter
             out += ["br label %while{}_condition".format(n)]
