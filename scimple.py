@@ -101,12 +101,14 @@ class ASTNode():
             lParen = noParens.find("(")
             rParen = findMatching(noParens,lParen)
             caller = statement[:lParen].strip()
-            if caller == "":
-                self.op = "()"
-            else:
+            self.op = "()"
+            if caller in types.keys(): # Casting to type caller
+                self.children = [ASTNode(statement[lParen+1:rParen],self.parser).castTo(caller,True)]
+                self.dtype = caller
+            elif caller != "":
                 self.op = "FUNC " + caller
-            self.children = [ASTNode(statement[lParen+1:rParen],self.parser)]
-            self.dtype = self.children[0].dtype
+                self.children = [ASTNode(statement[lParen+1:rParen],self.parser)]
+                self.dtype = self.children[0].dtype
             return
         raise ValueError("ERROR: Can't parse:'{}'.\n".format(statement))
 
