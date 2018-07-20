@@ -2,7 +2,7 @@ from __future__ import division
 import unittest
 import subprocess32 as subprocess
 import scimple
-
+from math import *
 
 class ScimpleTester(unittest.TestCase):
     def testParenHandling(self):
@@ -37,7 +37,10 @@ class ScimpleTester(unittest.TestCase):
             "(23/34*2.3%4.)-3/(3.42-12.)*(True < 3.2)",
             "(23+(4/3)-(3)/(3.42+12) % 4*True)",
             "False or 18/6 > 2.",
-            "5 < 4 and 27 >= 28-1."]
+            "5 < 4 and 27 >= 28-1.",
+            "sin(4.3) + cos(23.43)",
+            "sin(4-3.)/tan(12.)",
+            "sin(atan(32.423-32.)/3.) + (12-True)"]
         commands = 'print '+'\nprint '.join(expressions).strip() + '\n'
         # Get python results
         pythonResults = map(eval,expressions)

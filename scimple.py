@@ -98,11 +98,13 @@ class ASTNode():
             self.op = "Variable"
             return
         if '(' in noParens:
-            # TODO: Buggily ignores if stuff is still outside the parentheses
-            # TODO: Might be a function
-            self.op = "()"
             lParen = noParens.find("(")
             rParen = findMatching(noParens,lParen)
+            caller = statement[:lParen].strip()
+            if caller == "":
+                self.op = "()"
+            else:
+                self.op = "FUNC " + caller
             self.children = [ASTNode(statement[lParen+1:rParen],self.parser)]
             self.dtype = self.children[0].dtype
             return
@@ -147,6 +149,14 @@ class ASTNode():
             return addr, var[1], out
         if self.op == "()":
             return self.children[0].evaluate()
+        if self.op.startswith("FUNC "):
+            addr = p.newRegister()
+            funcName = self.op[5:]
+            t = types[self.dtype]
+            self.parser.header.add('declare {} @{}({})'.format(t,funcName,t))
+            out = inputs[0][2]
+            out += ["{} = call {} @{}({} {})".format(addr, t,funcName,t,inputs[0][0])]
+            return addr, self.dtype, out
         if self.op == "Convert":
             addr = self.parser.newRegister()
             out = inputs[0][2]
@@ -190,13 +200,16 @@ class ASTNode():
         self.parser.header.add('declare i32 @printf(i8* nocapture readonly, ...)')
         out = right[2]
         if right[1] == "Real":
-            self.parser.header.add('@printFloat = external global [4 x i8]')
+            if '@printFloat = global [4 x i8] c"%f\\0A\\00\"' not in self.parser.header:
+                self.parser.header.add('@printFloat = external global [4 x i8]')
             out += ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printFloat, i32 0, i32 0), double {})".format(right[0])]
         elif right[1] == "Int":
-            self.parser.header.add('@printInt = external global [4 x i8]')
+            if '@printInt = global [4 x i8] c"%i\\0A\\00"' not in self.parser.header:
+                self.parser.header.add('@printInt = external global [4 x i8]')
             out += ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i32 {})".format(right[0])]
         elif right[1] == "Bool":
-            self.parser.header.add('@printInt = external global [4 x i8]')
+            if '@printInt = global [4 x i8] c"%i\\0A\\00"' not in self.parser.header:
+                self.parser.header.add('@printInt = external global [4 x i8]')
             out += ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i1 {})".format(right[0])]
         return None, None, out
 
@@ -375,11 +388,11 @@ class ScimpleCompiler():
 
     def parseFile(self, filename,outputFile="a.out"):
         # Header information
-        out = ['declare i32 @printf(i8* nocapture readonly, ...)']
-        out += ['@printFloat = private unnamed_addr constant [4 x i8] c"%f\\0A\\00\"']
-        out += ['@printInt = private unnamed_addr constant [4 x i8] c"%i\\0A\\00"']
+        self.header.add('declare i32 @printf(i8* nocapture readonly, ...)')
+        self.header.add('@printFloat = global [4 x i8] c"%f\\0A\\00\"')
+        self.header.add('@printInt = global [4 x i8] c"%i\\0A\\00"')
         # Declare the main function and populated it with code
-        out += ["define i32 @main(){"]
+        out = ["define i32 @main(){"]
         out += ["entry:"]
         sourceFile = open(filename,'r')
         while True:
@@ -391,16 +404,15 @@ class ScimpleCompiler():
         sourceFile.close()
         # End the main function
         out += ["    ret i32 0\n}"]
-        out = '\n'.join(out)
+        out = '\n'.join(list(self.header)+out)
         if self.debugIR:
             print out
-            return
         tempFile = "/tmp/" + os.path.splitext(os.path.basename(filename))[0]
         f = open(tempFile+".ll",'w')
         f.write(out)
         f.close()
         subprocess.call(["llc", tempFile+".ll", "--filetype=obj", "-O3","-o", tempFile+".o"])
-        subprocess.call(["gcc", tempFile+".o",'-o',outputFile])
+        subprocess.call(["gcc", tempFile+".o",'-lm','-o',outputFile])
 
 
 def findMatching(s,start=0,left='(',right=')'):
