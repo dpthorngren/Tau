@@ -1,11 +1,19 @@
 #!/usr/bin/python
 import llvmlite.binding as llvm
 from ctypes import CFUNCTYPE, c_int
+import prompt_toolkit as ptk
+import pygments
 import subprocess
 import argparse
 import sys
 import os
 import re
+
+# Pygments settings
+example_style = ptk.styles.style_from_dict({
+    ptk.token.Token.DefaultPrompt: '#8AE234 bold',
+})
+
 
 # Language definitions
 types = {'Real':'double','Int':'i32','Bool':'i1'}
@@ -257,6 +265,7 @@ class ScimpleCompiler():
         self.blockCounter = 0
         self.globalVars = {}
         self.jitFunctionCounter = 0
+        self.promptHistory = ptk.history.FileHistory(os.path.expanduser("~/.scimplehistory"))
         self.resetModule()
 
 
@@ -267,11 +276,13 @@ class ScimpleCompiler():
         # Get the block head
         while True:
             if jitMode and not self.quiet:
-                if level==0:
-                    sys.stdout.write('\033[95m\033[1mscimple>\033[0m ')
+                if level > 0:
+                    getPromptTokens = lambda x: [(ptk.token.Token.DefaultPrompt,(9+4*level)*" ")]
                 else:
-                    sys.stdout.write((9+4*level)*" ")
-            blockHead = source.readline()
+                    getPromptTokens = lambda x: [(ptk.token.Token.DefaultPrompt,"scimple> ")]
+                blockHead = ptk.shortcuts.prompt(history=self.promptHistory,get_prompt_tokens=getPromptTokens, style=example_style)
+            else:
+                blockHead = source.readline()
             if not blockHead or blockHead.strip() == "end":
                 raise EOFError
             if blockHead.strip() != "":
