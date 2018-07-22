@@ -121,8 +121,12 @@ class ASTNode():
                 self.children = [ASTNode(statement[lParen+1:rParen],self.parser).castTo(caller,True)]
             elif caller != "":
                 self.op = "FUNC " + caller
-                self.children = [ASTNode(i,self.parser) for i in statement[lParen+1:rParen].split(",")]
-                self.dtype = self.children[0].dtype
+                if caller in self.parser.userFunctions.keys():
+                    self.dtype, args = self.parser.userFunctions[caller]
+                    self.children = [ASTNode(i,self.parser).castTo(args[0]) for i,args in zip(statement[lParen+1:rParen].split(","),args)]
+                else:
+                    self.dtype = self.children[0].dtype
+                    self.children = [ASTNode(i,self.parser) for i in statement[lParen+1:rParen].split(",")]
             else:
                 self.op = "()"
                 self.children = [ASTNode(statement[lParen+1:rParen],self.parser)]
@@ -180,9 +184,13 @@ class ASTNode():
             addr = p.newRegister()
             funcName = self.op[5:]
             t = types[self.dtype]
-            self.parser.header.add('declare {} @{}({})'.format(t,funcName,t))
-            out = inputs[0][2]
-            out += ["{} = call {} @{}({} {})".format(addr, t,funcName,t,inputs[0][0])]
+            out = []
+            for i in inputs:
+                out += i[2]
+            argTypes = ", ".join([types[i[1]] for i in inputs])
+            self.parser.header.add('declare {} @{}({})'.format(t,funcName,argTypes))
+            arguments = ", ".join([types[i[1]]+" "+str(i[0]) for i in inputs])
+            out += ["{} = call {} @{}({})".format(addr, t,funcName,arguments)]
             return addr, self.dtype, out
         if self.op == "Convert":
             addr = self.parser.newRegister()
@@ -264,6 +272,7 @@ class ScimpleCompiler():
         self.numRegisters = 0
         self.blockCounter = 0
         self.globalVars = {}
+        self.userFunctions = {}
         self.jitFunctionCounter = 0
         self.promptHistory = ptk.history.FileHistory(os.path.expanduser("~/.scimplehistory"))
         self.resetModule()
@@ -293,6 +302,8 @@ class ScimpleCompiler():
             rParen = findMatching(blockHead,lParen)
             dtype, funcName = blockHead[3:lParen].strip().split(" ")
             args = [i.strip().split(" ") for i in blockHead[lParen+1:rParen].split(",")]
+            if funcName in self.userFunctions.keys():
+                raise ValueError("ERROR: Function {} is already defined.".format(funcName))
             signature = ["{} {}({})".format(types[dtype],funcName,",".join([types[i]+" "+j for i,j in args]))]
             out += ["define {} @{}({})".format(types[dtype],funcName,",".join([types[i]+" %arg_"+j for i,j in args])) + "{"]
             for argType, argName in args:
@@ -306,9 +317,9 @@ class ScimpleCompiler():
                     out += output[2]
                 except EOFError:
                     break
-            # out += ["ret {} 1.".format(types[dtype])]
             if dtype != output[1]:
-                raise ValueError("ERROR: Return type ({}) does not match declaration ({}).".format(output[1],self.dtype))
+                raise ValueError("ERROR: Return type ({}) does not match declaration ({}).".format(output[1],dtype))
+            self.userFunctions[funcName] = (dtype,args)
             out += ["    ret {} {}".format(types[dtype],output[0]) + '}']
             self.localVars = {}
             return funcName, signature, out
