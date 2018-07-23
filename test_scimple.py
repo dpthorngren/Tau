@@ -4,6 +4,41 @@ import subprocess32 as subprocess
 import scimple
 from math import *
 
+snippet1 = '''
+i = 3
+while i < 10:
+    if i%2 == 0:
+        print i
+        end
+    i = i + 1
+    end
+'''
+
+snippet2 = '''
+def Real foo(Real x, Int y):
+    x = x - 3
+    y / x
+    end
+print foo(23.,5)
+print foo(12+3.,3)
+print foo(sin(4.),8//3)
+'''
+
+snippet3 = '''
+def Int fibb():
+    a = 0
+    b = 1
+    temp = 0
+    while a < 100:
+        temp = a + b
+        b = a
+        a = temp
+        print a
+        end
+    end
+fibb()
+'''
+
 def getScimpleOutput(code):
     # Get REPL results
     p = subprocess.Popen(["python","./scimple.py",'--quiet'],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
@@ -84,18 +119,26 @@ class ScimpleTester(unittest.TestCase):
         return
 
     def test_ifWhile(self):
-        code =  ["i = 3",
-                "while i < 10:",
-                "    if i%2 == 0:",
-                "        print i",
-                "    end",
-                "end"]
-        commands = '\n'.join(code).strip() + '\n'
         expected = ['4','6','8']
-        jitResults, compiledResults, ret = getScimpleOutput(commands)
+        jitResults, compiledResults, ret = getScimpleOutput(snippet1)
         self.assertEqual(ret,0)
         self.assertListEqual(jitResults,expected)
         self.assertListEqual(compiledResults,expected)
+
+    def test_functions(self):
+        expected = [.25,.25,-0.532367619138325]
+        jitResults, compiledResults, ret = getScimpleOutput(snippet2)
+        self.assertEqual(ret,0)
+        self.assertEqual(len(expected),len(jitResults))
+        self.assertEqual(len(expected),len(compiledResults))
+        for i,j,k in zip(expected,jitResults,compiledResults):
+            self.assertEqual(j,k)
+            self.assertAlmostEqual(i,float(j),places=5)
+
+    def test_noargs(self):
+        # Currently not compiling!
+        # jitResults, compiledResults, ret = getScimpleOutput(snippet3)
+        return
 
 
 if __name__ == "__main__":

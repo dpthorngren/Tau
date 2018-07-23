@@ -145,7 +145,7 @@ class ASTNode():
         p = self.parser
         inputs = [i.evaluate() for i in self.children]
         if self.op == "print":
-            return self.evalPrintStatement(inputs[0])
+            return evalPrintStatement(p,inputs[0])
         if self.op == '=':
             name = self.statement.split('=')[0].strip()
             left = p.getVariable(name)
@@ -194,7 +194,8 @@ class ASTNode():
             for i in inputs:
                 out += i[2]
             argTypes = ", ".join([types[i[1]] for i in inputs])
-            self.parser.header.add('declare {} @{}({})'.format(t,funcName,argTypes))
+            if funcName not in p.moduleFunctions:
+                self.parser.header.add('declare {} @{}({})'.format(t,funcName,argTypes))
             arguments = ", ".join([types[i[1]]+" "+str(i[0]) for i in inputs])
             out += ["{} = call {} @{}({})".format(addr, t,funcName,arguments)]
             return addr, self.dtype, out
@@ -237,23 +238,6 @@ class ASTNode():
         return addr, self.dtype, out
 
 
-    def evalPrintStatement(self,right):
-        self.parser.header.add('declare i32 @printf(i8* nocapture readonly, ...)')
-        out = right[2]
-        if right[1] == "Real":
-            if '@printFloat = global [4 x i8] c"%f\\0A\\00\"' not in self.parser.header:
-                self.parser.header.add('@printFloat = external global [4 x i8]')
-            out += ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printFloat, i32 0, i32 0), double {})".format(right[0])]
-        elif right[1] == "Int":
-            if '@printInt = global [4 x i8] c"%i\\0A\\00"' not in self.parser.header:
-                self.parser.header.add('@printInt = external global [4 x i8]')
-            out += ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i32 {})".format(right[0])]
-        elif right[1] == "Bool":
-            if '@printInt = global [4 x i8] c"%i\\0A\\00"' not in self.parser.header:
-                self.parser.header.add('@printInt = external global [4 x i8]')
-            out += ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i1 {})".format(right[0])]
-        return "", "", out
-
     def castTo(self,dtype,force=False):
         if self.dtype == dtype:
             return self
@@ -270,6 +254,72 @@ class ASTNode():
         return converterNode
 
 
+def evalPrintStatement(parser,right):
+    parser.header.add('declare i32 @printf(i8* nocapture readonly, ...)')
+    out = right[2]
+    if right[1] == "Real":
+        if '@printFloat = global [4 x i8] c"%f\\0A\\00\"' not in parser.header:
+            parser.header.add('@printFloat = external global [4 x i8]')
+        out += ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printFloat, i32 0, i32 0), double {})".format(right[0])]
+    elif right[1] == "Int":
+        if '@printInt = global [4 x i8] c"%i\\0A\\00"' not in parser.header:
+            parser.header.add('@printInt = external global [4 x i8]')
+        out += ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i32 {})".format(right[0])]
+    elif right[1] == "Bool":
+        if '@printInt = global [4 x i8] c"%i\\0A\\00"' not in parser.header:
+            parser.header.add('@printInt = external global [4 x i8]')
+        out += ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i1 {})".format(right[0])]
+    return "", "", out
+
+
+class InputBuffer():
+    def __init__(self,source,replMode=False,quiet=False):
+        self.promptHistory = ptk.history.FileHistory(os.path.expanduser("~/.scimplehistory"))
+        self.source = source
+        self.jitMode = (source == '-')
+        self.buffer = []
+        self.replMode = replMode
+        self.quiet = quiet
+
+    def _popOrDie_(self):
+        output = self.buffer.pop(0)
+        if not output or output.strip() == "end":
+            raise EOFError
+        return output
+
+    def fillBuffer(self,level=0):
+        while True:
+            if self.jitMode and not self.quiet:
+                if sys.stdout.isatty():
+                    if level > 0:
+                        getPromptTokens = lambda x: [(ptk.token.Token.DefaultPrompt,(9+4*level)*" ")]
+                    else:
+                        getPromptTokens = lambda x: [(ptk.token.Token.DefaultPrompt,"scimple> ")]
+                    output = ptk.shortcuts.prompt(history=self.promptHistory,get_prompt_tokens=getPromptTokens, style=example_style)
+                else:
+                    output = sys.stdin.readline()
+            else:
+                output = self.source.readline()
+            if not output or output.strip() == "end":
+                raise EOFError
+            if output.strip() != "":
+                break
+        self.buffer += output.splitlines()
+        return
+
+    def getLine(self,level=0):
+        if self.buffer:
+            return self._popOrDie_()
+        self.fillBuffer(level)
+        return self._popOrDie_()
+
+    def peek(self, level=0):
+        if self.buffer:
+            return self.buffer[0]
+        self.fillBuffer(level)
+        return self.buffer[0]
+
+
 class ScimpleCompiler():
     def __init__(self,debugIR=False,debugAST=False,quiet=False):
         self.debugIR = debugIR
@@ -279,31 +329,19 @@ class ScimpleCompiler():
         self.blockCounter = 0
         self.globalVars = {}
         self.userFunctions = {}
+        self.moduleFunctions = []
         self.jitFunctionCounter = 0
-        self.promptHistory = ptk.history.FileHistory(os.path.expanduser("~/.scimplehistory"))
         self.resetModule()
 
 
     def parseBlock(self,source,level=0):
         out = []
         tail = []
-        jitMode = source is sys.stdin
-        # Get the block head
-        while True:
-            if jitMode and not self.quiet:
-                if level > 0:
-                    getPromptTokens = lambda x: [(ptk.token.Token.DefaultPrompt,(9+4*level)*" ")]
-                else:
-                    getPromptTokens = lambda x: [(ptk.token.Token.DefaultPrompt,"scimple> ")]
-                blockHead = ptk.shortcuts.prompt(history=self.promptHistory,get_prompt_tokens=getPromptTokens, style=example_style)
-            else:
-                blockHead = source.readline()
-            if not blockHead or blockHead.strip() == "end":
-                raise EOFError
-            if blockHead.strip() != "":
-                break
+        jitMode = source.jitMode
         # Classify the block
+        blockHead = source.peek(level)
         if re.match("^\s*def .*(.*):\s*",blockHead): # Function declaration
+            blockHead = source.getLine()
             lParen = blockHead.find("(")
             rParen = findMatching(blockHead,lParen)
             dtype, funcName = blockHead[3:lParen].strip().split(" ")
@@ -326,44 +364,45 @@ class ScimpleCompiler():
             if dtype != output[1]:
                 raise ValueError("ERROR: Return type ({}) does not match declaration ({}).".format(output[1],dtype))
             self.userFunctions[funcName] = (dtype,args)
+            self.moduleFunctions.append(funcName)
             out += ["    ret {} {}".format(types[dtype],output[0]) + '}']
             self.localVars = {}
             return funcName, signature, out
+        elif jitMode and level == 0:  # Top-level statement in JIT mode
+            newFuncName = "jit_{}".format(self.jitFunctionCounter)
+            self.jitFunctionCounter += 1
+            out += ["define i32 @{}()".format(newFuncName)+"{"]
+            out += ["    entry:"]
+            output = self.parseBlock(source,level+1)
+            if output[1] in types:
+                output = evalPrintStatement(self,output)
+            out += ["    "+i for i in output[2]]
+            out += ["    ret i32 0\n}"]
+            return newFuncName, "Int", out
+        blockHead = source.getLine(level)
         if re.match("^\s*if .*:$",blockHead): # If statement
             preds = []
             n = self.blockCounter
             astOutput = ASTNode(blockHead.strip()[2:-1],self,jitMode).castTo("Bool").evaluate()
-            out += astOutput[2]
-            out += ["br i1 {}, label %if{}_then, label %if{}_resume".format(astOutput[0],n,n)]
+            out += ["    "+i for i in astOutput[2]]
+            out += ["    br i1 {}, label %if{}_then, label %if{}_resume".format(astOutput[0],n,n)]
             out += ["if{}_then:".format(n)]
-            tail = ["br label %if{}_resume".format(n)]
+            tail = ["    br label %if{}_resume".format(n)]
             tail += ["if{}_resume:".format(n,n)]
             self.blockCounter += 1
         elif re.match("^\s*while .*:$",blockHead): # While statement
             preds = []
             n = self.blockCounter
-            out += ["br label %while{}_condition".format(n)]
+            out += ["    br label %while{}_condition".format(n)]
             out += ["while{}_condition:".format(n)]
             astOutput = ASTNode(blockHead.strip()[5:-1],self,jitMode).castTo("Bool").evaluate()
-            out += astOutput[2]
-            out += ["br i1 {}, label %while{}_then, label %while{}_resume".format(astOutput[0],n,n)]
+            out += ["    "+i for i in astOutput[2]]
+            out += ["    br i1 {}, label %while{}_then, label %while{}_resume".format(astOutput[0],n,n)]
             out += ["while{}_then:".format(n)]
-            tail += ["br label %while{}_condition".format(n)]
+            tail += ["    br label %while{}_condition".format(n)]
             tail += ["while{}_resume:".format(n,n)]
             self.blockCounter += 1
         else: # Not a block start, so treat as a standard statement
-            if jitMode and level == 0:  # Top-level statement in JIT mode
-                newFuncName = "jit_{}".format(self.jitFunctionCounter)
-                self.jitFunctionCounter += 1
-                out += ["define i32 @{}()".format(newFuncName)+"{"]
-                out += ["entry:"]
-                ast = ASTNode(blockHead,self,jitMode)
-                output = ast.evaluate()
-                if output[1] in types:
-                    output = ast.evalPrintStatement(output)
-                out += ["    "+i for i in output[2]]
-                out += ["    ret i32 0\n}"]
-                return newFuncName, "Int", out
             output = ASTNode(blockHead,self,jitMode).evaluate()
             out += ["    "+i for i in output[2]]
             return output[0], output[1], out
@@ -423,13 +462,14 @@ class ScimpleCompiler():
 	jit = llvm.create_mcjit_compiler(owner, target_machine)
 
         # Begin the main parsing loop
+        source = InputBuffer('-')
         if not self.quiet:
             print "ScimpleREPL 0.000001"
             print "Almost no features, massively buggy.  Good luck!"
         while True:
             # Grab a block and convert it into LLVM IR
             try:
-                output = self.parseBlock(sys.stdin,0)
+                output = self.parseBlock(source,0)
             except ValueError, e:
                 print str(e).strip()
                 self.resetModule()
@@ -456,6 +496,7 @@ class ScimpleCompiler():
 
     def resetModule(self):
         self.localVars = {}
+        self.moduleFunctions = []
         self.header = set([])
 
 
@@ -467,9 +508,10 @@ class ScimpleCompiler():
         main = []
         out = []
         sourceFile = open(filename,'r')
+        source = InputBuffer(sourceFile)
         while True:
             try:
-                output = self.parseBlock(sourceFile,0)
+                output = self.parseBlock(source,0)
                 if re.match("^define .*$",output[2][0]):
                     out += output[2]
                 else:
