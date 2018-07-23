@@ -86,7 +86,12 @@ class ASTNode():
                     self.dtype = 'Real' if 'Real' in [i.dtype for i in self.children] else "Int"
                     self.children = [i.castTo(self.dtype) for i in self.children]
                     return
-        # if op == '//': TODO, once explicit conversions are implemented, which happens when functions are implemented
+        if '//' in noParens:
+            self.op = '//'
+            index = noParens.find('//')
+            self.dtype = "Int"
+            self.children = [ASTNode(i,self.parser).castTo("Int") for i in [statement[:index],statement[index+2:]]]
+            return
         if '/' in noParens:
             self.op = '/'
             index = noParens.find('/')
@@ -117,6 +122,7 @@ class ASTNode():
             rParen = findMatching(noParens,lParen)
             caller = statement[:lParen].strip()
             if caller in types.keys(): # Casting to type caller
+                self.op = "()"
                 self.dtype = caller
                 self.children = [ASTNode(statement[lParen+1:rParen],self.parser).castTo(caller,True)]
             elif caller != "":
@@ -125,8 +131,8 @@ class ASTNode():
                     self.dtype, args = self.parser.userFunctions[caller]
                     self.children = [ASTNode(i,self.parser).castTo(args[0]) for i,args in zip(statement[lParen+1:rParen].split(","),args)]
                 else:
-                    self.dtype = self.children[0].dtype
                     self.children = [ASTNode(i,self.parser) for i in statement[lParen+1:rParen].split(",")]
+                    self.dtype = self.children[0].dtype
             else:
                 self.op = "()"
                 self.children = [ASTNode(statement[lParen+1:rParen],self.parser)]
@@ -158,7 +164,7 @@ class ASTNode():
             return addr, "Bool", out
         if self.op in ['<=','>=','<','>','!=','==']:
             return self.comparison(inputs[0],inputs[1])
-        if self.op in ['-','+','*','/','%']:
+        if self.op in ['-','+','*','/','//','%']:
             return self.simpleBinary(inputs[0],inputs[1])
         if self.op == "**":
             addr = self.parser.newRegister()
@@ -220,10 +226,10 @@ class ASTNode():
         addr = self.parser.newRegister()
         if left[1] != right[1] or any([i not in types.keys() for i in [left[1], right[1]]]):
             raise ValueError("ERROR: Cannot {} types {} and {}".format(self.op,left[1],right[1]))
-        function = {'+':"add","*":"mul","%":"rem",'/':'div',"-":"sub"}[self.op]
+        function = {'+':"add","*":"mul","%":"rem",'/':'div',"//":"div","-":"sub"}[self.op]
         if self.dtype is "Real":
             function = 'f'+function
-        if self.op in ['%','/'] and self.dtype is "Int":
+        if self.op in ['%','//'] and self.dtype is "Int":
             function = 's'+function
         out = left[2] + right[2]
         out += ["{} = {} {} {}, {}".format(
@@ -364,7 +370,7 @@ class ScimpleCompiler():
         # Process the block body
         while True:
             try:
-                out += self.parseBlock(source,level+1)
+                out += self.parseBlock(source,level+1)[2]
             except EOFError:
                 break
         return "", "", out + tail
@@ -446,7 +452,6 @@ class ScimpleCompiler():
             # Call the recently added function
             (CFUNCTYPE(c_int)(jit.get_function_address(output[0])))()
             self.resetModule()
-        print ""
 
 
     def resetModule(self):

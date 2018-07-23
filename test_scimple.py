@@ -4,6 +4,20 @@ import subprocess32 as subprocess
 import scimple
 from math import *
 
+def getScimpleOutput(code):
+    # Get REPL results
+    p = subprocess.Popen(["python","./scimple.py",'--quiet'],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
+    jitResults = p.communicate(code,timeout=2)[0].strip().splitlines()
+    if p.poll():
+        p.terminate()
+    # Get compiled results
+    f = open("/tmp/scimpleTest.sy",'w')
+    f.write(code)
+    f.close()
+    retValue = subprocess.call(["python","./scimple.py",'/tmp/scimpleTest.sy','--output','/tmp/scimpleTest'])
+    compiledResults = subprocess.check_output('/tmp/scimpleTest').strip().splitlines()
+    return jitResults, compiledResults, retValue
+
 class ScimpleTester(unittest.TestCase):
     def testParenHandling(self):
         self.assertEqual(scimple.findMatching("(asdf)(asdf)",0),5)
@@ -49,21 +63,13 @@ class ScimpleTester(unittest.TestCase):
         commands = 'print '+'\nprint '.join(expressions).strip() + '\n'
         # Get python results
         pythonResults = map(eval,expressions)
-        # Get REPL results
-        p = subprocess.Popen(["python","./scimple.py",'--quiet'],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
-        scimpleResults = p.communicate(commands,timeout=2)[0].strip().splitlines()
-        if p.poll():
-            p.terminate()
-        # Get compiled results
-        f = open("/tmp/scimpleTest.sy",'w')
-        f.write(commands)
-        f.close()
-        self.assertEqual(subprocess.call(["python","./scimple.py",'/tmp/scimpleTest.sy','--output','/tmp/scimpleTest']),0)
-        compiledResults = subprocess.check_output('/tmp/scimpleTest').strip().splitlines()
+        # Get Scimple Results
+        jitResults, compiledResults, ret = getScimpleOutput(commands)
+        self.assertEqual(ret,0)
         # Compiled results should be identical to REPL results
-        self.assertListEqual(scimpleResults,compiledResults)
+        self.assertListEqual(jitResults,compiledResults)
         # All of these tests should return the same type and value as Python
-        for p, s, e in zip(pythonResults,scimpleResults,expressions):
+        for p, s, e in zip(pythonResults,jitResults,expressions):
             if type(p) is float:
                 self.assertIn('.',s,msg=e)
                 self.assertAlmostEqual(p,float(s),places=5,msg=e)
@@ -76,6 +82,21 @@ class ScimpleTester(unittest.TestCase):
             else:
                 raise ValueError("Your test sucks.")
         return
+
+    def test_ifWhile(self):
+        code =  ["i = 3",
+                "while i < 10:",
+                "    if i%2 == 0:",
+                "        print i",
+                "    end",
+                "end"]
+        commands = '\n'.join(code).strip() + '\n'
+        expected = ['4','6','8']
+        jitResults, compiledResults, ret = getScimpleOutput(commands)
+        self.assertEqual(ret,0)
+        self.assertListEqual(jitResults,expected)
+        self.assertListEqual(compiledResults,expected)
+
 
 if __name__ == "__main__":
     unittest.main()
