@@ -35,6 +35,7 @@ def Int fibb():
         a = temp
         print a
         end
+    a
     end
 fibb()
 '''
@@ -137,7 +138,8 @@ class ScimpleTester(unittest.TestCase):
 
     def test_noargs(self):
         # Currently not compiling!
-        # jitResults, compiledResults, ret = getScimpleOutput(snippet3)
+        jitResults, compiledResults, ret = getScimpleOutput(snippet3)
+        self.assertEqual(ret,0)
         return
 
 

@@ -361,16 +361,16 @@ class ScimpleCompiler():
             lParen = blockHead.find("(")
             rParen = findMatching(blockHead,lParen)
             dtype, funcName = blockHead[3:lParen].strip().split(" ")
-            args = [i.strip().split(" ") for i in blockHead[lParen+1:rParen].split(",")]
+            args = []
+            if blockHead[lParen+1:rParen].strip() != "":
+                args = [i.strip().split(" ") for i in blockHead[lParen+1:rParen].split(",")]
             if funcName in self.userFunctions.keys():
                 raise ValueError("ERROR: Function {} is already defined.".format(funcName))
-            signature = ["{} {}({})".format(types[dtype],funcName,",".join([types[i]+" "+j for i,j in args]))]
             out += ["define {} @{}({})".format(types[dtype],funcName,",".join([types[i]+" %arg_"+j for i,j in args])) + "{"]
             for argType, argName in args:
                 mem = self.newVariable(argName, argType)
                 out += ["    "+i for i in mem[2]]
-                out += ["    store {} {}, {}* {}".format(
-                    types[argType],"%arg_"+argName,types[mem[1]],mem[0])]
+                out += ["    store {} {}, {}* {}".format(types[argType],"%arg_"+argName,types[mem[1]],mem[0])]
             while True:
                 try:
                     output = self.parseBlock(source,level+1)
@@ -383,7 +383,7 @@ class ScimpleCompiler():
             self.moduleFunctions.append(funcName)
             out += ["    ret {} {}".format(types[dtype],output[0]) + '}']
             self.localVars = {}
-            return funcName, signature, out
+            return funcName, "", out
         elif jitMode and level == 0:  # Top-level statement in JIT mode
             newFuncName = "jit_{}".format(self.jitFunctionCounter)
             self.jitFunctionCounter += 1
