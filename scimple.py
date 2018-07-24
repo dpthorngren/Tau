@@ -36,7 +36,7 @@ class ASTNode():
         if manualInit:
             return
         if parser.debugAST:
-            print statement
+            sys.stderr.write("AST: "+statement+"\n")
         # Remove parentheses contents, so that we won't find operators inside
         noParens = statement
         while True:
@@ -273,13 +273,16 @@ def evalPrintStatement(parser,right):
 
 
 class InputBuffer():
-    def __init__(self,source,replMode=False,quiet=False):
+    def __init__(self,source,replMode=False,quiet=False,stringInput=False):
         self.promptHistory = ptk.history.FileHistory(os.path.expanduser("~/.scimplehistory"))
         self.source = source
-        self.jitMode = (source == '-')
+        self.jitMode = (source == '-') or stringInput
         self.buffer = []
         self.replMode = replMode
         self.quiet = quiet
+        self.stringInput = stringInput
+        if stringInput:
+            self.buffer = [line for line in source.splitlines() if line]
 
     def _popOrDie_(self):
         output = self.buffer.pop(0)
@@ -288,6 +291,8 @@ class InputBuffer():
         return output
 
     def fillBuffer(self,level=0):
+        if self.stringInput:
+            raise EOFError
         while True:
             if self.jitMode and not self.quiet:
                 if sys.stdout.isatty():
@@ -321,7 +326,7 @@ class InputBuffer():
 
 
 class ScimpleCompiler():
-    def __init__(self,debugIR=False,debugAST=False,quiet=False):
+    def __init__(self,debugIR=False,debugAST=False,quiet=True):
         self.debugIR = debugIR
         self.debugAST = debugAST
         self.quiet = quiet
@@ -332,6 +337,17 @@ class ScimpleCompiler():
         self.moduleFunctions = []
         self.jitFunctionCounter = 0
         self.resetModule()
+	# Setup the execution engine
+        llvm.initialize()
+        llvm.initialize_native_target()
+        llvm.initialize_native_asmprinter()
+        out = ['declare i32 @printf(i8* nocapture readonly, ...)']
+        out += ['@printFloat = global [4 x i8] c"%f\\0A\\00\"']
+        out += ['@printInt = global [4 x i8] c"%i\\0A\\00"']
+	target = llvm.Target.from_default_triple()
+	target_machine = target.create_target_machine()
+	owner = llvm.parse_assembly('\n'.join(out))
+	self.jit = llvm.create_mcjit_compiler(owner, target_machine)
 
 
     def parseBlock(self,source,level=0):
@@ -448,21 +464,12 @@ class ScimpleCompiler():
         return name
 
 
-    def runJIT(self):
-	# Setup the execution engine
-        llvm.initialize()
-        llvm.initialize_native_target()
-        llvm.initialize_native_asmprinter()
-        out = ['declare i32 @printf(i8* nocapture readonly, ...)']
-        out += ['@printFloat = global [4 x i8] c"%f\\0A\\00\"']
-        out += ['@printInt = global [4 x i8] c"%i\\0A\\00"']
-	target = llvm.Target.from_default_triple()
-	target_machine = target.create_target_machine()
-	owner = llvm.parse_assembly('\n'.join(out))
-	jit = llvm.create_mcjit_compiler(owner, target_machine)
-
+    def runJIT(self,commandString=None):
         # Begin the main parsing loop
-        source = InputBuffer('-')
+        if commandString:
+            source = InputBuffer(commandString,stringInput=True)
+        else:
+            source = InputBuffer('-')
         if not self.quiet:
             print "ScimpleREPL 0.000001"
             print "Almost no features, massively buggy.  Good luck!"
@@ -481,16 +488,16 @@ class ScimpleCompiler():
             out += output[2]
             out = '\n'.join(out)
             if self.debugIR:
-                print out
+                sys.stderr.write(out+"\n")
             # Now compile and run the code
             try:
                 mod = llvm.parse_assembly(out)
-                jit.add_module(mod)
+                self.jit.add_module(mod)
             except RuntimeError, e:
                 print "ERROR:", str(e).strip()
                 continue
             # Call the recently added function
-            (CFUNCTYPE(c_int)(jit.get_function_address(output[0])))()
+            (CFUNCTYPE(c_int)(self.jit.get_function_address(output[0])))()
             self.resetModule()
 
 
@@ -526,7 +533,7 @@ class ScimpleCompiler():
         out += ["    ret i32 0\n}"]
         out = '\n'.join(list(self.header)+out)
         if self.debugIR:
-            print out
+            sys.stderr.write(out+"\n")
         tempFile = "/tmp/" + os.path.splitext(os.path.basename(filename))[0]
         f = open(tempFile+".ll",'w')
         f.write(out)
