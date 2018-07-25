@@ -1,0 +1,24 @@
+#!/usr/bin/python
+import argparse
+import scimple
+
+
+if __name__ == "__main__":
+    # Parse the command line arguments
+    ap = argparse.ArgumentParser(description="Compiles Scimple code or starts a REPL session.")
+    ap.add_argument("filename",nargs='?',help="The file to compile; if absent, start a REPL session.")
+    ap.add_argument("--debug-ir",action='store_true',help="Print IR code immediately after it is generated.")
+    ap.add_argument("--debug-ast",action='store_true',help="Print the string passed to initialize each abstract syntax tree node.")
+    ap.add_argument("--quiet",action='store_true',help="Do not print non-essential output (like REPL prompts)")
+    ap.add_argument("--output",help="The name of the compiled file to write.",default="a.out")
+    args = ap.parse_args()
+
+    # Startup the parser and compile or run a REPL
+    p = scimple.ScimpleCompiler(args.debug_ir,args.debug_ast,args.quiet)
+    if args.filename:
+        p.parseFile(args.filename,args.output)
+    else:
+        try:
+            p.runJIT()
+        except EOFError, KeyboardInterrupt:
+            print ""
