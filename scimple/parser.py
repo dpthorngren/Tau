@@ -58,7 +58,7 @@ class ScimpleJIT():
         return
 
 
-    def runREPL(self,commandString=None):
+    def runREPL(self):
         '''Starts a REPL in the JIT session.'''
         source = InputBuffer('-')
         if not self.quiet:
@@ -70,20 +70,23 @@ class ScimpleJIT():
 
 
 def compileFile(filename,outputFile="a.out",debugIR=False,debugAST=False):
+    '''Reads scimple code from a given file and compiles it to an executable.'''
     # Header information
     m = ScimpleModule(False,debugAST)
     m.ensureDeclared("printf",'declare i32 @printf(i8* nocapture readonly, ...)')
     m.ensureDeclared("printFloat",'@printFloat = global [4 x i8] c"%f\\0A\\00\"')
     m.ensureDeclared("printInt",'@printInt = global [4 x i8] c"%i\\0A\\00"')
+    # Read through the source code to be compiled
     sourceFile = open(filename,'r')
     source = InputBuffer(sourceFile)
     while not source.end():
         parseTopLevel(m,source)
     sourceFile.close()
-    # Set up the main function
+    # Convert the module to IR Code
     irCode = str(m)
     if debugIR:
         sys.stderr.write(irCode)
+    # Write the IR code to a temporary file and compile it to an executable
     tempFile = "/tmp/" + os.path.splitext(os.path.basename(filename))[0]
     f = open(tempFile+".ll",'w')
     f.write(irCode)
@@ -97,6 +100,7 @@ def parseTopLevel(module,source,forJIT=False):
     # Classify the block
     blockHead = source.peek()
     if re.match("^\s*def .*(.*):\s*",blockHead): # Function declaration
+        # Determine function name and return type
         blockHead = source.getLine()
         lParen = blockHead.find("(")
         rParen = findMatching(blockHead,lParen)
@@ -112,9 +116,11 @@ def parseTopLevel(module,source,forJIT=False):
             mem = module.newVariable(argName, argType)
             module.body += ["    "+i for i in mem[2]]
             module.body += ["    store {} {}, {}* {}".format(types[argType],"%arg_"+argName,types[mem[1]],mem[0])]
+        # Read in the function body
         while not source.end():
             output = parseBlock(module,source,1,forJIT)
             module.body += output[2]
+        # Check that the return type is correct and end the function definition
         if dtype != output[1]:
             raise ValueError("ERROR: Return type ({}) does not match declaration ({}).".format(output[1],dtype))
         module.userFunctions[funcName] = (dtype,args)

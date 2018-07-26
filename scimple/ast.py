@@ -10,6 +10,7 @@ conversions = {"RealInt":[True,"{} = fptosi double {} to i32"],
                "BoolReal":[False,"{} = uitofp i1 {} to double"],
                "BoolInt":[False,"{} = zext i1 {} to i32"]}
 
+
 class ASTNode():
     def __init__(self,statement,module,isGlobal=False,manualInit=False):
         statement = statement.strip()
@@ -205,7 +206,6 @@ class ASTNode():
         out = left[2] + right[2]
         out += ["{} = {} {} {}, {}".format(addr,function,types[left[1]],left[0],right[0])]
         return addr, self.dtype, out
-
 
 
     def simpleBinary(self,left,right):

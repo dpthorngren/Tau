@@ -9,7 +9,7 @@ globalInit = {'Real':'1.0','Int':'1','Bool':'false'}
 
 class ScimpleModule():
     '''Stores the state of the module as it is constructed'''
-    # Global state variables (valid for all modules)
+    # Global state information (valid for all modules)
     globalVars = {}
     anonNumber = 0
 
@@ -71,18 +71,23 @@ class ScimpleModule():
 
 
     def newRegister(self):
+        '''Returns the name of a new unique register, and increments the
+           register counter (used to generate future register names.'''
         name = "%reg_{}".format(self.numRegisters)
         self.numRegisters += 1
         return name
 
 
     def newAnonymousFunction(self):
+        '''Returns the name of a new unique anonymous function, and increments
+           the register counter (used to generate future register names.'''
         name = "anonymous_{}".format(ScimpleModule.anonNumber)
         ScimpleModule.anonNumber += 1
         return name
 
 
     def callIfNeeded(self,jit):
+        '''If the last JIT compilation created an anonymous function, run it.'''
         if self.definedMain:
             name = "anonymous_{}".format(ScimpleModule.anonNumber-1)
             (CFUNCTYPE(c_int)(jit.get_function_address(name)))()
@@ -90,6 +95,7 @@ class ScimpleModule():
 
 
     def __str__(self):
+        '''Print the module as IR code.'''
         out = list(self.header)
         out += self.body
         self.definedMain = False
