@@ -22,15 +22,11 @@ class InputBuffer():
         if stringInput:
             self.buffer = [line for line in source.splitlines() if line]
 
-    def _popOrDie_(self):
-        output = self.buffer.pop(0)
-        if not output or output.strip() == "end":
-            raise EOFError
-        return output
 
     def fillBuffer(self,level=0):
         if self.stringInput:
-            raise EOFError
+            self.buffer += ["end"]
+            return
         while True:
             if self.jitMode and not self.quiet:
                 if sys.stdout.isatty():
@@ -43,21 +39,29 @@ class InputBuffer():
                     output = sys.stdin.readline()
             else:
                 output = self.source.readline()
-            if not output or output.strip() == "end":
-                raise EOFError
+            if not output:
+                output = "end"
             if output.strip() != "":
                 break
         self.buffer += output.splitlines()
         return
 
+
     def getLine(self,level=0):
-        if self.buffer:
-            return self._popOrDie_()
-        self.fillBuffer(level)
-        return self._popOrDie_()
+        if not self.buffer:
+            self.fillBuffer(level)
+        return self.buffer.pop()
+
 
     def peek(self, level=0):
-        if self.buffer:
-            return self.buffer[0]
-        self.fillBuffer(level)
+        if not self.buffer:
+            self.fillBuffer(level)
         return self.buffer[0]
+
+
+    def end(self,level=0):
+        nextline = self.peek(level)
+        if nextline.strip() == "end":
+            self.buffer.pop()
+            return True
+        return False

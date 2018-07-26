@@ -64,11 +64,8 @@ class ScimpleJIT():
         if not self.quiet:
             print "ScimpleREPL 0.000001"
             print "Almost no features, massively buggy.  Good luck!"
-        while True:
-            try:
-                self._runFromSource_(source)
-            except EOFError:
-                break
+        while not source.end():
+            self._runFromSource_(source)
         return
 
 
@@ -80,11 +77,8 @@ def compileFile(filename,outputFile="a.out",debugIR=False,debugAST=False):
     m.ensureDeclared("printInt",'@printInt = global [4 x i8] c"%i\\0A\\00"')
     sourceFile = open(filename,'r')
     source = InputBuffer(sourceFile)
-    while True:
-        try:
-            parseTopLevel(m,source)
-        except EOFError: # Ran out of code to parse
-            break
+    while not source.end():
+        parseTopLevel(m,source)
     sourceFile.close()
     # Set up the main function
     irCode = str(m)
@@ -118,12 +112,9 @@ def parseTopLevel(module,source,forJIT=False):
             mem = module.newVariable(argName, argType)
             module.body += ["    "+i for i in mem[2]]
             module.body += ["    store {} {}, {}* {}".format(types[argType],"%arg_"+argName,types[mem[1]],mem[0])]
-        while True:
-            try:
-                output = parseBlock(module,source,1,forJIT)
-                module.body += output[2]
-            except EOFError:
-                break
+        while not source.end():
+            output = parseBlock(module,source,1,forJIT)
+            module.body += output[2]
         if dtype != output[1]:
             raise ValueError("ERROR: Return type ({}) does not match declaration ({}).".format(output[1],dtype))
         module.userFunctions[funcName] = (dtype,args)
@@ -169,9 +160,6 @@ def parseBlock(module,source,level=0,forJIT=False):
         out += ["    "+i for i in output[2]]
         return output[0], output[1], out
     # Process the block body
-    while True:
-        try:
-            out += parseBlock(module,source,level+1,forJIT)[2]
-        except EOFError:
-            break
+    while not source.end(level):
+        out += parseBlock(module,source,level+1,forJIT)[2]
     return "", "", out + tail
