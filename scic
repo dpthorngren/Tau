@@ -19,6 +19,6 @@ if __name__ == "__main__":
     else:
         try:
             p = scimple.ScimpleJIT(args.debug_ir,args.debug_ast,args.quiet)
-            p.runJIT()
+            p.runREPL()
         except EOFError, KeyboardInterrupt:
             print ""

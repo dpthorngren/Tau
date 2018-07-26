@@ -1,4 +1,3 @@
-from ctypes import CFUNCTYPE, c_int
 import llvmlite.binding as llvm
 import subprocess
 import os
@@ -31,10 +30,9 @@ class ScimpleJIT():
         '''Reads commands from the given InputBuffer objects and runs them
            as a new module in the current JIT session.'''
         # Generate the IR code from the source
-        m = ScimpleModule(self.debugAST)
+        m = ScimpleModule(True,self.debugAST)
         try:
-            output = parseBlock(m,source,0,True)
-            m.body += output[2]
+            parseTopLevel(m,source,True)
         except ValueError, e:
             print str(e).strip()
             return
@@ -49,7 +47,7 @@ class ScimpleJIT():
             print "ERROR:", str(e).strip()
             return
         # Call the newly added function
-        (CFUNCTYPE(c_int)(self.jit.get_function_address(output[0])))()
+        m.callIfNeeded(self.jit)
         return
 
 
@@ -60,7 +58,7 @@ class ScimpleJIT():
         return
 
 
-    def runJIT(self,commandString=None):
+    def runREPL(self,commandString=None):
         '''Starts a REPL in the JIT session.'''
         source = InputBuffer('-')
         if not self.quiet:
@@ -74,48 +72,75 @@ class ScimpleJIT():
         return
 
 
-def parseBlock(module,source,level=0,forJIT=False):
-    out = []
-    tail = []
+def compileFile(filename,outputFile="a.out",debugIR=False,debugAST=False):
+    # Header information
+    m = ScimpleModule(False,debugAST)
+    m.ensureDeclared("printf",'declare i32 @printf(i8* nocapture readonly, ...)')
+    m.ensureDeclared("printFloat",'@printFloat = global [4 x i8] c"%f\\0A\\00\"')
+    m.ensureDeclared("printInt",'@printInt = global [4 x i8] c"%i\\0A\\00"')
+    sourceFile = open(filename,'r')
+    source = InputBuffer(sourceFile)
+    while True:
+        try:
+            parseTopLevel(m,source)
+        except EOFError: # Ran out of code to parse
+            break
+    sourceFile.close()
+    # Set up the main function
+    irCode = str(m)
+    if debugIR:
+        sys.stderr.write(irCode)
+    tempFile = "/tmp/" + os.path.splitext(os.path.basename(filename))[0]
+    f = open(tempFile+".ll",'w')
+    f.write(irCode)
+    f.close()
+    subprocess.call(["llc", tempFile+".ll", "--filetype=obj", "-O3","-o", tempFile+".o"])
+    subprocess.call(["gcc", tempFile+".o",'-lm','-o',outputFile])
+    return
+
+
+def parseTopLevel(module,source,forJIT=False):
     # Classify the block
-    blockHead = source.peek(level)
+    blockHead = source.peek()
     if re.match("^\s*def .*(.*):\s*",blockHead): # Function declaration
         blockHead = source.getLine()
         lParen = blockHead.find("(")
         rParen = findMatching(blockHead,lParen)
         dtype, funcName = blockHead[3:lParen].strip().split(" ")
+        if funcName in module.userFunctions.keys():
+            raise ValueError("ERROR: Function {} is already defined.".format(funcName))
+        # Handle function arguments
         args = []
         if blockHead[lParen+1:rParen].strip() != "":
             args = [i.strip().split(" ") for i in blockHead[lParen+1:rParen].split(",")]
-        if funcName in module.userFunctions.keys():
-            raise ValueError("ERROR: Function {} is already defined.".format(funcName))
-        out += ["define {} @{}({})".format(types[dtype],funcName,",".join([types[i]+" %arg_"+j for i,j in args])) + "{"]
+        module.body += ["define {} @{}({})".format(types[dtype],funcName,",".join([types[i]+" %arg_"+j for i,j in args])) + "{"]
         for argType, argName in args:
             mem = module.newVariable(argName, argType)
-            out += ["    "+i for i in mem[2]]
-            out += ["    store {} {}, {}* {}".format(types[argType],"%arg_"+argName,types[mem[1]],mem[0])]
+            module.body += ["    "+i for i in mem[2]]
+            module.body += ["    store {} {}, {}* {}".format(types[argType],"%arg_"+argName,types[mem[1]],mem[0])]
         while True:
             try:
-                output = parseBlock(module,source,level+1,forJIT)
-                out += output[2]
+                output = parseBlock(module,source,1,forJIT)
+                module.body += output[2]
             except EOFError:
                 break
         if dtype != output[1]:
             raise ValueError("ERROR: Return type ({}) does not match declaration ({}).".format(output[1],dtype))
         module.userFunctions[funcName] = (dtype,args)
-        out += ["    ret {} {}".format(types[dtype],output[0]) + '}']
+        module.body += ["    ret {} {}".format(types[dtype],output[0]) + '}']
         module.localVars = {}
-        return funcName, "", out
-    elif forJIT and level == 0:  # Top-level statement in JIT mode
-        newFuncName = module.newAnonymousFunction()
-        out += ["define i32 @{}()".format(newFuncName)+"{"]
-        out += ["    entry:"]
-        output = parseBlock(module,source,level+1,forJIT)
-        if output[1] in types:
-            output = evalPrintStatement(module,output)
-        out += ["    "+i for i in output[2]]
-        out += ["    ret i32 0\n}"]
-        return newFuncName, "Int", out
+        return
+    # Top-level statement
+    output = parseBlock(module,source,1,forJIT)
+    if forJIT and output[1] in types:
+        output = evalPrintStatement(module,output)
+    module.main += output[2]
+    return
+
+
+def parseBlock(module,source,level=0,forJIT=False):
+    out = []
+    tail = []
     blockHead = source.getLine(level)
     if re.match("^\s*if .*:$",blockHead): # If statement
         preds = []
@@ -150,34 +175,3 @@ def parseBlock(module,source,level=0,forJIT=False):
         except EOFError:
             break
     return "", "", out + tail
-
-
-def compileFile(filename,outputFile="a.out",debugIR=False,debugAST=False):
-    # Header information
-    m = ScimpleModule(debugAST)
-    m.ensureDeclared("printf",'declare i32 @printf(i8* nocapture readonly, ...)')
-    m.ensureDeclared("printFloat",'@printFloat = global [4 x i8] c"%f\\0A\\00\"')
-    m.ensureDeclared("printInt",'@printInt = global [4 x i8] c"%i\\0A\\00"')
-    sourceFile = open(filename,'r')
-    source = InputBuffer(sourceFile)
-    while True:
-        try:
-            output = parseBlock(m,source,0,None)
-            if re.match("^define .*$",output[2][0]):
-                m.body += output[2]
-            else:
-                m.main += output[2]
-        except EOFError: # Ran out of code to parse
-            break
-    sourceFile.close()
-    # Set up the main function
-    irCode = str(m)
-    if debugIR:
-        sys.stderr.write(irCode)
-    tempFile = "/tmp/" + os.path.splitext(os.path.basename(filename))[0]
-    f = open(tempFile+".ll",'w')
-    f.write(irCode)
-    f.close()
-    subprocess.call(["llc", tempFile+".ll", "--filetype=obj", "-O3","-o", tempFile+".o"])
-    subprocess.call(["gcc", tempFile+".o",'-lm','-o',outputFile])
-    return

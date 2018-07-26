@@ -1,3 +1,4 @@
+from ctypes import CFUNCTYPE, c_int
 import re
 
 
@@ -12,8 +13,9 @@ class ScimpleModule():
     globalVars = {}
     anonNumber = 0
 
-    def __init__(self,debugAST=False):
-        # Debug settings
+    def __init__(self,replMode=False,debugAST=False):
+        # Basic settings
+        self.replMode = replMode
         self.debugAST = debugAST
         # Module name lists
         self.alreadyDeclared = []
@@ -68,23 +70,35 @@ class ScimpleModule():
         return None
 
 
-    def newRegister(self,dtype=None,data=None):
+    def newRegister(self):
         name = "%reg_{}".format(self.numRegisters)
         self.numRegisters += 1
         return name
 
 
     def newAnonymousFunction(self):
-        name = "jit_{}".format(ScimpleModule.anonNumber)
+        name = "anonymous_{}".format(ScimpleModule.anonNumber)
         ScimpleModule.anonNumber += 1
         return name
+
+
+    def callIfNeeded(self,jit):
+        if self.definedMain:
+            name = "anonymous_{}".format(ScimpleModule.anonNumber-1)
+            (CFUNCTYPE(c_int)(jit.get_function_address(name)))()
+        return
 
 
     def __str__(self):
         out = list(self.header)
         out += self.body
+        self.definedMain = False
         if self.main:
-            out += ["define i32 @main(){"]
+            self.definedMain = True
+            mainName = "main"
+            if self.replMode:
+                mainName = self.newAnonymousFunction()
+            out += ["define i32 @{}()".format(mainName) + "{"]
             out += ["entry:"]
             out += ["    "*(':' not in l)+l for l in self.main]
             out += ["    ret i32 0\n}"]
