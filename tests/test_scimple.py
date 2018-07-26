@@ -42,7 +42,7 @@ fibb()
 
 def getScimpleOutput(code):
     # Get REPL results
-    p = subprocess.Popen(["python","./scimple.py",'--quiet'],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
+    p = subprocess.Popen(["python","./scic",'--quiet'],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
     jitResults = p.communicate(code,timeout=2)[0].strip().splitlines()
     if p.poll():
         p.terminate()
@@ -50,7 +50,7 @@ def getScimpleOutput(code):
     f = open("/tmp/scimpleTest.sy",'w')
     f.write(code)
     f.close()
-    retValue = subprocess.call(["python","./scimple.py",'/tmp/scimpleTest.sy','--output','/tmp/scimpleTest'])
+    retValue = subprocess.call(["python","./scic",'/tmp/scimpleTest.sy','--output','/tmp/scimpleTest'])
     compiledResults = subprocess.check_output('/tmp/scimpleTest').strip().splitlines()
     return jitResults, compiledResults, retValue
 

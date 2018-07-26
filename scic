@@ -14,11 +14,11 @@ if __name__ == "__main__":
     args = ap.parse_args()
 
     # Startup the parser and compile or run a REPL
-    p = scimple.ScimpleCompiler(args.debug_ir,args.debug_ast,args.quiet)
     if args.filename:
-        p.parseFile(args.filename,args.output)
+        scimple.compileFile(args.filename,args.output,args.debug_ir,args.debug_ast)
     else:
         try:
+            p = scimple.ScimpleJIT(args.debug_ir,args.debug_ast,args.quiet)
             p.runJIT()
         except EOFError, KeyboardInterrupt:
             print ""
