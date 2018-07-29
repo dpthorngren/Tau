@@ -11,16 +11,17 @@ class ScimpleModule():
     '''Stores the state of the module as it is constructed'''
     # Global state information (valid for all modules)
     globalVars = {}
+    userFunctions = {}
     anonNumber = 0
 
-    def __init__(self,replMode=False,debugAST=False):
+    def __init__(self,replMode=False,debugAST=False,debugLexer=False):
         # Basic settings
         self.replMode = replMode
         self.debugAST = debugAST
+        self.debugLexer = debugLexer
         # Module name lists
         self.alreadyDeclared = []
         self.localVars = {}
-        self.userFunctions = {}
         # Code storage
         self.header = []
         self.body = []
@@ -59,7 +60,7 @@ class ScimpleModule():
         return name, dtype, out
 
 
-    def getVariable(self, name):
+    def getVariable(self, name, throw=False):
         '''Checks if a variable exists, and returns the name and dtype if so.'''
         if name in ScimpleModule.globalVars.keys():
             dtype = ScimpleModule.globalVars[name]
@@ -67,6 +68,8 @@ class ScimpleModule():
             return "@usr_{}".format(name), ScimpleModule.globalVars[name], []
         elif name in self.localVars.keys():
             return "%usr_{}".format(name), self.localVars[name], []
+        elif throw:
+            raise ValueError("ERROR: variable {} has not been declared.".format(name))
         return None
 
 

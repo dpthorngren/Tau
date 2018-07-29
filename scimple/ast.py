@@ -1,5 +1,6 @@
 import re
 import sys
+from lexer import *
 
 # Language definitions
 types = {'Real':'double','Int':'i32','Bool':'i1'}
@@ -12,128 +13,99 @@ conversions = {"RealInt":[True,"{} = fptosi double {} to i32"],
 
 
 class ASTNode():
-    def __init__(self,statement,module,isGlobal=False,manualInit=False):
-        statement = statement.strip()
-        # Keep reference to parent module and statement
+    def __init__(self,tokens,module,isGlobal=False,manualInit=False):
+        # Keep reference to parent module
         self.isGlobal = isGlobal
-        self.statement = statement
         self.module = module
         self.children = []
         if manualInit:
             return
+        # Find the token of lowest precedence
+        index, self.token = min(enumerate(tokens), key = lambda t: t[1].getPrecedence())
+        leftTokens, rightTokens = tokens[:index], tokens[index+1:]
         if module.debugAST:
-            sys.stderr.write("AST: "+statement+"\n")
-        # Remove parentheses contents, so that we won't find operators inside
-        noParens = statement
-        while True:
-            lParen = re.search(r'\((?!\s*\))',noParens)
-            if lParen is None:
-                break
-            lParen = lParen.start()
-            rParen = findMatching(noParens,lParen)
-            noParens = noParens[:1+lParen] + " "*(rParen-lParen-1) + noParens[rParen:]
-        # Now, find the operator with the lowest precedence
-        if re.match("^print ",noParens): # Found a print statement, like "print x+4."
-            self.op = "print"
-            self.children = [(ASTNode(statement[5:],self.module))]
+            sys.stderr.write("AST: "+self.token.name+', '+str(self.token.data)+"\n")
+        # Now, construct the node according to the operator found
+        # TODO: verify that the correct number of left and right tokens was found
+        if self.token.name == "print":
+            self.children = [ASTNode(rightTokens,self.module)]
             return
-        match = re.search(r'(?<![<>=])=(?!=)',noParens)
-        if match: # Found an assignment, e.g. "x = 3.*(4.+5.)"
-            self.op = "="
-            self.children = [ASTNode(statement[match.start()+1:],self.module)]
+        if self.token.name == "=":
+            self.children = [ASTNode(rightTokens,self.module)]
+            self.assignmentTarget = leftTokens[0].data
             self.dtype = self.children[0].dtype
             return
-        for op in [' and ',' or ',' xor ']:
-            if op in noParens:
-                self.op = op.strip()
-                self.dtype = "Bool"
-                index = noParens.find(op)
-                self.children = [ASTNode(i,self.module).castTo("Bool") for i in [statement[:index],statement[index+len(op):]]]
-                return
-        for op in ['<=','>=','<','>','!=','==']: # Found a comparison, e.g. 3==4
-            if op in noParens:
-                self.op = op
-                index = noParens.find(op)
-                self.children = [ASTNode(i,self.module) for i in [statement[:index],statement[index+len(op):]]]
-                childType = "Bool"
-                if 'Real' in [i.dtype for i in self.children]:
-                    childType = 'Real'
-                elif 'Int' in [i.dtype for i in self.children]:
-                    childType = 'Int'
-                self.children = [i.castTo(childType) for i in self.children]
-                self.dtype = "Bool"
-                return
-        for op in ['-','+','%','*']: # Found a basic binary operator, e.g. 34.*x
-            if op in noParens:
-                self.op = op
-                index = noParens.find(op)
-                if noParens[index:index+2] != "**":
-                    self.children = [ASTNode(i,self.module) for i in [statement[:index],statement[index+1:]]]
-                    self.dtype = 'Real' if 'Real' in [i.dtype for i in self.children] else "Int"
-                    self.children = [i.castTo(self.dtype) for i in self.children]
-                    return
-        if '//' in noParens:
-            self.op = '//'
-            index = noParens.find('//')
+        if self.token.name in ['and','or','xor']:
+            self.dtype = "Bool"
+            self.children = [ASTNode(t,self.module).castTo("Bool") for t in [leftTokens, rightTokens]]
+            return
+        if self.token.name in ['<=','>=','<','>','!=','==']:
+            self.children = [ASTNode(t,self.module) for t in [leftTokens, rightTokens]]
+            childType = "Bool"
+            if 'Real' in [i.dtype for i in self.children]:
+                childType = 'Real'
+            elif 'Int' in [i.dtype for i in self.children]:
+                childType = 'Int'
+            self.children = [i.castTo(childType) for i in self.children]
+            self.dtype = "Bool"
+            return
+        if self.token.name in ['-','+','%','*']:
+            self.children = [ASTNode(t,self.module) for t in [leftTokens,rightTokens]]
+            self.dtype = 'Real' if 'Real' in [i.dtype for i in self.children] else "Int"
+            self.children = [i.castTo(self.dtype) for i in self.children]
+            return
+        if self.token.name == '//':
             self.dtype = "Int"
-            self.children = [ASTNode(i,self.module).castTo("Int") for i in [statement[:index],statement[index+2:]]]
+            self.children = [ASTNode(t,self.module).castTo("Int") for t in [leftTokens,rightTokens]]
             return
-        if '/' in noParens:
-            self.op = '/'
-            index = noParens.find('/')
+        if self.token.name == '/' or self.token.name == "**":
             self.dtype = "Real"
-            self.children = [ASTNode(i,self.module).castTo("Real") for i in [statement[:index],statement[index+1:]]]
+            self.children = [ASTNode(t,self.module).castTo("Real") for t in [leftTokens,rightTokens]]
             return
-        if '**' in noParens:
-            self.op = '**'
-            index = noParens.find('**')
-            self.dtype = "Real"
-            self.children = [ASTNode(i,self.module).castTo("Real") for i in [statement[:index],statement[index+2:]]]
+        if self.token.name == "literal":
+            self.dtype = self.token.data[0]
             return
-        if re.match("^\d*$",noParens): # Found an Int literal
-            self.op = self.dtype = "Int"
-            return
-        if re.match("^\d*\.?\d*$",noParens): # Found a Real literal
-            self.op = self.dtype = "Real"
-            return
-        if noParens.strip() in ['True','False']: # Found a Bool literal
-            self.op = self.dtype = "Bool"
-            return
-        if self.module.getVariable(noParens): # Found a variable
-            _, self.dtype, _ = self.module.getVariable(statement)
-            self.op = "Variable"
-            return
-        if '(' in noParens:
-            lParen = noParens.find("(")
-            rParen = findMatching(noParens,lParen)
-            caller = statement[:lParen].strip()
-            if caller in types.keys(): # Casting to type caller
-                self.op = "()"
-                self.dtype = caller
-                self.children = [ASTNode(statement[lParen+1:rParen],self.module).castTo(caller,True)]
-            elif caller != "":
-                self.op = "FUNC " + caller
+        if self.token.name == '()':
+            if leftTokens and (leftTokens[-1].name == "type"):
+                # Explicit type cast
+                self.dtype = leftTokens.pop(-1).data
+                self.children = [ASTNode(self.token.data,self.module).castTo(self.dtype,True)]
+                return
+            elif leftTokens and (leftTokens[-1].name == "name"):
+                # Function call
+                # TODO: Use correct name right out of the lexer
+                caller = leftTokens.pop(-1).data
+                self.token.name = "FUNC " + caller
                 if caller in self.module.userFunctions.keys():
+                    # Known, user-defined function
                     self.dtype, args = self.module.userFunctions[caller]
-                    self.children = [ASTNode(i,self.module).castTo(args[0]) for i,args in zip(statement[lParen+1:rParen].split(","),args)]
+                    self.children = [ASTNode(t,self.module).castTo(a[0]) for t, a in zip(splitArguments(self.token.data),args)]
                 else:
-                    self.children = [ASTNode(i,self.module) for i in statement[lParen+1:rParen].split(",")]
+                    # Unknown function, assume it's declared somewhere else
+                    # self.children = [ASTNode(i,self.module) for i in statement[lParen+1:rParen].split(",")]
+                    self.children = [ASTNode(self.token.data,self.module)]
                     self.dtype = self.children[0].dtype
-            else:
-                self.op = "()"
-                self.children = [ASTNode(statement[lParen+1:rParen],self.module)]
-                self.dtype = self.children[0].dtype
+                return
+            # Standard parentheses
+            self.token.name = "()"
+            self.children = [ASTNode(self.token.data,self.module)]
+            self.dtype = self.children[0].dtype
             return
-        raise ValueError("ERROR: Can't parse:'{}'.\n".format(statement))
+        if self.token.name == "name":
+            _, self.dtype, _ = self.module.getVariable(self.token.data,True)
+            return
+        raise ValueError("ERROR: Can't parse:'{}'.\n".format(self.token.name))
 
 
     def evaluate(self):
         m = self.module
         inputs = [i.evaluate() for i in self.children]
-        if self.op == "print":
+        if self.token.name == "print":
             return evalPrintStatement(m,inputs[0])
-        if self.op == '=':
-            name = self.statement.split('=')[0].strip()
+        if self.token.name == '=':
+            name = self.assignmentTarget
+            if not re.match(r"[a-zA-Z_]\w*",name):
+                raise ValueError("ERROR: Cannot assign to {}.".format(name))
             left = m.getVariable(name)
             if left is None:
                 left = m.newVariable(name,inputs[0][1],self.isGlobal)
@@ -143,54 +115,49 @@ class ASTNode():
             out += ["store {} {}, {}* {}".format(
                 types[inputs[0][1]],inputs[0][0],types[left[1]],left[0])]
             return types[inputs[0][1]], m.getVariable(inputs[0][0]), out
-        if self.op in ['and','or','xor']:
+        if self.token.name in ['and','or','xor']:
             addr = m.newRegister()
             out = inputs[0][2] + inputs[1][2]
-            out += ["{} = {} i1 {}, {}".format(addr,self.op,inputs[0][0],inputs[1][0])]
+            out += ["{} = {} i1 {}, {}".format(addr,self.token.name,inputs[0][0],inputs[1][0])]
             return addr, "Bool", out
-        if self.op in ['<=','>=','<','>','!=','==']:
+        if self.token.name in ['<=','>=','<','>','!=','==']:
             return self.comparison(inputs[0],inputs[1])
-        if self.op in ['-','+','*','/','//','%']:
+        if self.token.name in ['-','+','*','/','//','%']:
             return self.simpleBinary(inputs[0],inputs[1])
-        if self.op == "**":
+        if self.token.name == "**":
             addr = m.newRegister()
             t = types[self.dtype]
             out = inputs[0][2] + inputs[1][2]
             m.ensureDeclared("llvm.pow.f64","declare double @llvm.pow.f64(double, double)")
             out += ["{} = call double @llvm.pow.f64(double {}, double {})".format(addr, inputs[0][0], inputs[1][0])]
             return addr, self.dtype, out
-        if self.op == "Int":
-            return int(self.statement), "Int", []
-        if self.op == "Real":
-            return float(self.statement), "Real", []
-        if self.op == "Bool":
-            return self.statement.strip().lower(), "Bool", []
-        if self.op == "Variable":
+        if self.token.name == "literal":
+            return self.token.data[1], self.dtype, []
+        if self.token.name == "name":
             addr = m.newRegister()
-            var = m.getVariable(self.statement)
+            var = m.getVariable(self.token.data)
             out = ["{} = load {}, {}* {}".format(addr,types[var[1]], types[var[1]], var[0])]
             return addr, var[1], out
-        if self.op == "()":
+        if self.token.name == "()":
             return self.children[0].evaluate()
-        if self.op.startswith("FUNC "):
+        if self.token.name.startswith("FUNC "):
             addr = m.newRegister()
-            funcName = self.op[5:]
+            funcName = self.token.name[5:]
             t = types[self.dtype]
             out = []
             for i in inputs:
                 out += i[2]
             argTypes = ", ".join([types[i[1]] for i in inputs])
-            if funcName not in m.userFunctions.keys():
-                m.ensureDeclared(funcName,'declare {} @{}({})'.format(t,funcName,argTypes))
+            m.ensureDeclared(funcName,'declare {} @{}({})'.format(t,funcName,argTypes))
             arguments = ", ".join([types[i[1]]+" "+str(i[0]) for i in inputs])
             out += ["{} = call {} @{}({})".format(addr, t,funcName,arguments)]
             return addr, self.dtype, out
-        if self.op == "Convert":
+        if self.token.name == "Convert":
             addr = m.newRegister()
             out = inputs[0][2]
             out += [conversions[inputs[0][1]+self.dtype][1].format(addr,inputs[0][0])]
             return addr, self.dtype, out
-        raise ValueError("Internal Error: Unrecognized operator code {}".format(self.op))
+        raise ValueError("Internal Error: Unrecognized operator code {}".format(self.token.name))
 
 
     def comparison(self,left,right):
@@ -198,11 +165,11 @@ class ASTNode():
         if left[1] != right[1] or any([i not in types.keys() for i in [left[1], right[1]]]):
             raise ValueError("ERROR: Cannot {} types {} and {}".format(op,left[1],right[1]))
         if left[1] == "Real":
-            function = 'fcmp '+{'<=':'ole','>=':'oge','<':'olt','>':'ogt','!=':'one','==':'oeq'}[self.op]
+            function = 'fcmp '+{'<=':'ole','>=':'oge','<':'olt','>':'ogt','!=':'one','==':'oeq'}[self.token.name]
         elif left[1] == "Int":
-            function = 'icmp '+{'<=':'sle','>=':'sge','<':'slt','>':'sgt','!=':'ne','==':'eq'}[self.op]
+            function = 'icmp '+{'<=':'sle','>=':'sge','<':'slt','>':'sgt','!=':'ne','==':'eq'}[self.token.name]
         elif left[1] == "Bool":
-            function = 'icmp '+{'<=':'ule','>=':'uge','<':'ult','>':'ugt','!=':'ne','==':'eq'}[self.op]
+            function = 'icmp '+{'<=':'ule','>=':'uge','<':'ult','>':'ugt','!=':'ne','==':'eq'}[self.token.name]
         out = left[2] + right[2]
         out += ["{} = {} {} {}, {}".format(addr,function,types[left[1]],left[0],right[0])]
         return addr, self.dtype, out
@@ -211,11 +178,11 @@ class ASTNode():
     def simpleBinary(self,left,right):
         addr = self.module.newRegister()
         if left[1] != right[1] or any([i not in types.keys() for i in [left[1], right[1]]]):
-            raise ValueError("ERROR: Cannot {} types {} and {}".format(self.op,left[1],right[1]))
-        function = {'+':"add","*":"mul","%":"rem",'/':'div',"//":"div","-":"sub"}[self.op]
+            raise ValueError("ERROR: Cannot {} types {} and {}".format(self.token.name,left[1],right[1]))
+        function = {'+':"add","*":"mul","%":"rem",'/':'div',"//":"div","-":"sub"}[self.token.name]
         if self.dtype is "Real":
             function = 'f'+function
-        if self.op in ['%','//'] and self.dtype is "Int":
+        if self.token.name in ['%','//'] and self.dtype is "Int":
             function = 's'+function
         out = left[2] + right[2]
         out += ["{} = {} {} {}, {}".format(
@@ -232,11 +199,26 @@ class ASTNode():
             raise ValueError("ERROR: Cannot convert type {} to type {}.".format(self.dtype,dtype))
         if c[0] and not force:
             raise ValueError("ERROR: Won't automatically convert type {} to type {}.".format(self.dtype,dtype))
-        converterNode = ASTNode(self.statement,self.module,self.isGlobal,True)
+        converterNode = ASTNode(None,self.module,self.isGlobal,True)
+        converterNode.token = Token("Convert",dtype)
         converterNode.children = [self]
         converterNode.dtype = dtype
-        converterNode.op = "Convert"
         return converterNode
+
+
+def splitArguments(tokens):
+    '''Divides a list of tokens into a list of lists, splitting at the location
+       of ',' tokens.'''
+    output = []
+    subOutput = []
+    for t in tokens:
+         if t.name == ',':
+            output.append(subOutput)
+            subOutput = []
+         else:
+             subOutput.append(t)
+    output.append(subOutput)
+    return output
 
 
 def evalPrintStatement(m,right):

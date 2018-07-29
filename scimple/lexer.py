@@ -68,81 +68,92 @@ class InputBuffer():
         return False
 
 
-def lex(code):
+class Token():
+    precedence = ['print','=','and','or','xor','<=','>=','<','>','!=','==',
+                  '-','+','%','*','//','/','**','()','literal','name','type']
+
+    def __init__(self,name,data=None):
+        self.name = name
+        self.data = data
+
+    def getPrecedence(self):
+        return Token.precedence.index(self.name)
+
+
+
+def lex(code,debugLexer=False):
     tokens = []
-    data = []
     unprocessed = code.strip()
     indentation = len(code.rstrip()) - len(unprocessed)
     while unprocessed:
-        # Identify line-starting keywords
-        match = re.match(r"(def|for|while|if|print|end)\b",unprocessed)
+        # Identify block-starting keywords
+        match = re.match(r"(def|for|while|if)\b",unprocessed)
         if match:
             if unprocessed != code.strip():
                 raise ValueError("ERROR: Keyword {} must start the line.".format(match.group()))
-            if match.group() not in ['print','end'] and unprocessed[-1] != ':':
-                raise ValueError("ERROR: {} statements must end in ':'".format(match.group()))
-            tokens.append(match.group())
-            data.append(None)
+            tokens.append(Token(match.group()))
             unprocessed = unprocessed[len(match.group()):-1].strip()
+            continue
+        # Identify line-starting keywords
+        match = re.match(r"(print|end)\b",unprocessed)
+        if match:
+            if unprocessed != code.strip():
+                raise ValueError("ERROR: Keyword {} must start the line.".format(match.group()))
+            tokens.append(Token(match.group()))
+            unprocessed = unprocessed[len(match.group()):].strip()
             continue
         # Identify other keywords
         match = re.match(r"(and|or|xor)\b",unprocessed)
         if match:
-            tokens.append(match.group())
-            data.append(None)
+            tokens.append(Token(match.group()))
             unprocessed = unprocessed[len(match.group()):].strip()
             continue
         # Identify basic symbols
         match = re.match(r'(,|\+|-|\*\*?|%|//?|<=?|>=?|==?)',unprocessed)
         if match:
-            # TODO: Handle unary operators
-            tokens.append(match.group())
-            data.append(None)
+            tokens.append(Token(match.group()))
             unprocessed = unprocessed[len(match.group()):].strip()
             continue
-        # Identify parentheses and variants and eat the contents
+        # Identify parentheses and eat the contents
         if unprocessed.startswith("("):
             right = findMatching(unprocessed)
-            tokens.append("(")
-            data.append(lex(unprocessed[1:right]))
+            tokens.append(Token("()",lex(unprocessed[1:right])))
             unprocessed = unprocessed[right+1:].strip()
             continue
         # Identify real literals
         match = re.match(r"\d*\.\d*",unprocessed)
         if match:
-            tokens.append("literal")
-            data.append(["Real",float(match.group())])
+            tokens.append(Token("literal",["Real",float(match.group())]))
             unprocessed = unprocessed[len(match.group()):].strip()
             continue
         # Identify int literals
         match = re.match(r"\d+",unprocessed)
         if match:
-            tokens.append("literal")
-            data.append(["Int",int(match.group())])
+            tokens.append(Token("literal",["Int",int(match.group())]))
             unprocessed = unprocessed[len(match.group()):].strip()
             continue
         # Identify bool literals
         match = re.match(r"(True|False)",unprocessed)
         if match:
-            tokens.append("literal")
-            data.append(["Bool",bool(match.group())])
+            tokens.append(Token("literal",["Bool",match.group().lower()]))
             unprocessed = unprocessed[len(match.group()):].strip()
             continue
-        # Identify names
+        # Identify names and types
         match = re.match(r"[a-zA-Z_]\w*",unprocessed)
         if match:
             if match.group() in ['Real','Int','Bool']:
-                tokens.append("type")
+                tokens.append(Token("type",match.group()))
             else:
-                tokens.append("name")
-            data.append(match.group())
+                tokens.append(Token("name",match.group()))
             unprocessed = unprocessed[len(match.group()):].strip()
             continue
         if unprocessed.startswith(")"):
             raise ValueError("ERROR: Unmatched ending parenthesis.")
-        break
         raise ValueError("ERROR: Cannot interpret code: {}".format(code))
-    return indentation, tokens, data
+    # TODO: Locate unary operators, function calls, better assignment system, token combination errors
+    if debugLexer:
+        sys.stderr.write(code+" ===> "+str([t.name for t in tokens])+'\n')
+    return tokens
 
 
 def findMatching(s,start=0,left='(',right=')'):

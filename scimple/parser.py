@@ -3,14 +3,16 @@ import subprocess
 import os
 import re
 from lexer import *
+from ast import *
 from module import *
 
 
 class ScimpleJIT():
-    def __init__(self,debugIR=False,debugAST=False,quiet=True):
+    def __init__(self,debugIR=False,debugAST=False,quiet=True,debugLexer=False):
         # Record settings
         self.debugIR = debugIR
         self.debugAST = debugAST
+        self.debugLexer = debugLexer
         self.quiet = quiet
 	# Setup the execution engine
         llvm.initialize()
@@ -30,7 +32,7 @@ class ScimpleJIT():
         '''Reads commands from the given InputBuffer objects and runs them
            as a new module in the current JIT session.'''
         # Generate the IR code from the source
-        m = ScimpleModule(True,self.debugAST)
+        m = ScimpleModule(True,self.debugAST,self.debugLexer)
         try:
             parseTopLevel(m,source,True)
         except ValueError, e:
@@ -69,10 +71,10 @@ class ScimpleJIT():
         return
 
 
-def compileFile(filename,outputFile="a.out",debugIR=False,debugAST=False):
+def compileFile(filename,outputFile="a.out",debugIR=False,debugAST=False,debugLexer=False):
     '''Reads scimple code from a given file and compiles it to an executable.'''
     # Header information
-    m = ScimpleModule(False,debugAST)
+    m = ScimpleModule(False,debugAST,debugLexer)
     m.ensureDeclared("printf",'declare i32 @printf(i8* nocapture readonly, ...)')
     m.ensureDeclared("printFloat",'@printFloat = global [4 x i8] c"%f\\0A\\00\"')
     m.ensureDeclared("printInt",'@printInt = global [4 x i8] c"%i\\0A\\00"')
@@ -118,12 +120,13 @@ def parseTopLevel(module,source,forJIT=False):
             module.body += ["    store {} {}, {}* {}".format(types[argType],"%arg_"+argName,types[mem[1]],mem[0])]
         # Read in the function body
         while not source.end():
-            output = parseBlock(module,source,1,forJIT)
+            output = parseBlock(module,source,1)
             module.body += output[2]
         # Check that the return type is correct and end the function definition
         if dtype != output[1]:
             raise ValueError("ERROR: Return type ({}) does not match declaration ({}).".format(output[1],dtype))
         module.userFunctions[funcName] = (dtype,args)
+        module.alreadyDeclared.append(funcName)
         module.body += ["    ret {} {}".format(types[dtype],output[0]) + '}']
         module.localVars = {}
         return
@@ -142,7 +145,7 @@ def parseBlock(module,source,level=0,forJIT=False):
     if re.match("^\s*if .*:$",blockHead): # If statement
         preds = []
         n = module.blockCounter
-        astOutput = ASTNode(blockHead.strip()[2:-1],module,forJIT).castTo("Bool").evaluate()
+        astOutput = ASTNode(lex(blockHead.strip()[2:-1],module.debugLexer),module,forJIT).castTo("Bool").evaluate()
         out += ["    "+i for i in astOutput[2]]
         out += ["    br i1 {}, label %if{}_then, label %if{}_resume".format(astOutput[0],n,n)]
         out += ["if{}_then:".format(n)]
@@ -154,7 +157,7 @@ def parseBlock(module,source,level=0,forJIT=False):
         n = module.blockCounter
         out += ["    br label %while{}_condition".format(n)]
         out += ["while{}_condition:".format(n)]
-        astOutput = ASTNode(blockHead.strip()[5:-1],module,forJIT).castTo("Bool").evaluate()
+        astOutput = ASTNode(lex(blockHead.strip()[5:-1],module.debugLexer),module,forJIT).castTo("Bool").evaluate()
         out += ["    "+i for i in astOutput[2]]
         out += ["    br i1 {}, label %while{}_then, label %while{}_resume".format(astOutput[0],n,n)]
         out += ["while{}_then:".format(n)]
@@ -162,7 +165,7 @@ def parseBlock(module,source,level=0,forJIT=False):
         tail += ["while{}_resume:".format(n,n)]
         module.blockCounter += 1
     else: # Not a block start, so treat as a standard statement
-        output = ASTNode(blockHead,module,forJIT).evaluate()
+        output = ASTNode(lex(blockHead,module.debugLexer),module,forJIT).evaluate()
         out += ["    "+i for i in output[2]]
         return output[0], output[1], out
     # Process the block body

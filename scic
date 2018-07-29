@@ -9,16 +9,17 @@ if __name__ == "__main__":
     ap.add_argument("filename",nargs='?',help="The file to compile; if absent, start a REPL session.")
     ap.add_argument("--debug-ir",action='store_true',help="Print IR code immediately after it is generated.")
     ap.add_argument("--debug-ast",action='store_true',help="Print the string passed to initialize each abstract syntax tree node.")
+    ap.add_argument("--debug-lexer",action='store_true',help="Print the lexer input and output whenever lex() is called.")
     ap.add_argument("--quiet",action='store_true',help="Do not print non-essential output (like REPL prompts)")
     ap.add_argument("--output",help="The name of the compiled file to write.",default="a.out")
     args = ap.parse_args()
 
     # Startup the parser and compile or run a REPL
     if args.filename:
-        scimple.compileFile(args.filename,args.output,args.debug_ir,args.debug_ast)
+        scimple.compileFile(args.filename,args.output,args.debug_ir,args.debug_ast,args.debug_lexer)
     else:
         try:
-            p = scimple.ScimpleJIT(args.debug_ir,args.debug_ast,args.quiet)
+            p = scimple.ScimpleJIT(args.debug_ir,args.debug_ast,args.quiet,args.debug_lexer)
             p.runREPL()
         except EOFError, KeyboardInterrupt:
             print ""

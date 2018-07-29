@@ -25,11 +25,11 @@ print foo(sin(4.),8//3)
 '''
 
 snippet3 = '''
-def Int fibb():
+def Int fibb(Int lim):
     a = 0
     b = 1
     temp = 0
-    while a < 100:
+    while a < lim:
         temp = a + b
         b = a
         a = temp
@@ -37,7 +37,7 @@ def Int fibb():
         end
     a
     end
-fibb()
+fibb(100)
 '''
 
 def getScimpleOutput(code):
@@ -137,7 +137,6 @@ class ScimpleTester(unittest.TestCase):
             self.assertAlmostEqual(i,float(j),places=5)
 
     def test_noargs(self):
-        # Currently not compiling!
         jitResults, compiledResults, ret = getScimpleOutput(snippet3)
         self.assertEqual(ret,0)
         return
