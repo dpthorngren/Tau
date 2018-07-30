@@ -28,19 +28,25 @@ class ScimpleJIT():
         return
 
 
-    def _runFromSource_(self,source):
+    def _runFromSource_(self,source,loop=False):
         '''Reads commands from the given InputBuffer objects and runs them
            as a new module in the current JIT session.'''
         # Generate the IR code from the source
         m = ScimpleModule(True,self.debugAST,self.debugLexer)
         try:
-            parseTopLevel(m,source,True)
+            if loop:
+                while not source.end():
+                    parseTopLevel(m,source,True)
+            else:
+                parseTopLevel(m,source,True)
         except ValueError, e:
             print str(e).strip()
             return
         irCode = str(m)
         if self.debugIR:
-            sys.stderr.write(irCode+"\n")
+            sys.stderr.write("===== BEGIN IR =====\n")
+            sys.stderr.write(irCode)
+            sys.stderr.write("===== END IR =====\n")
         # Compile the IR code into the current JIT session
         try:
             mod = llvm.parse_assembly(irCode)
@@ -49,15 +55,13 @@ class ScimpleJIT():
             print "ERROR:", str(e).strip()
             return
         # Call the newly added function
-        m.callIfNeeded(self.jit)
-        return
+        return m.callIfNeeded(self.jit)
 
 
     def runCommand(self,commandString):
         '''Runs a command (or series of commands) in the JIT session.'''
         source = InputBuffer(commandString,stringInput=True)
-        self._runFromSource_(source)
-        return
+        return self._runFromSource_(source,True)
 
 
     def runREPL(self):
@@ -67,7 +71,9 @@ class ScimpleJIT():
             print "ScimpleREPL 0.000001"
             print "Almost no features, massively buggy.  Good luck!"
         while not source.end():
-            self._runFromSource_(source)
+            output = self._runFromSource_(source)
+            if output is not None:
+                print output
         return
 
 
@@ -87,7 +93,9 @@ def compileFile(filename,outputFile="a.out",debugIR=False,debugAST=False,debugLe
     # Convert the module to IR Code
     irCode = str(m)
     if debugIR:
+        sys.stderr.write("===== BEGIN IR =====\n")
         sys.stderr.write(irCode)
+        sys.stderr.write("===== END IR =====\n")
     # Write the IR code to a temporary file and compile it to an executable
     tempFile = "/tmp/" + os.path.splitext(os.path.basename(filename))[0]
     f = open(tempFile+".ll",'w')
@@ -131,10 +139,8 @@ def parseTopLevel(module,source,forJIT=False):
         module.localVars = {}
         return
     # Top-level statement
-    output = parseBlock(module,source,1,forJIT)
-    if forJIT and output[1] in types:
-        output = evalPrintStatement(module,output)
-    module.main += output[2]
+    module.lastOutput = parseBlock(module,source,1,forJIT)
+    module.main += module.lastOutput[2]
     return
 
 
@@ -171,4 +177,4 @@ def parseBlock(module,source,level=0,forJIT=False):
     # Process the block body
     while not source.end(level):
         out += parseBlock(module,source,level+1,forJIT)[2]
-    return "", "", out + tail
+    return "", "None", out + tail

@@ -5,13 +5,14 @@ import scimple
 from math import *
 
 snippet1 = '''
-i = 3
-while i < 10:
-    if i%2 == 0:
-        print i
+k = 3
+while k < 10:
+    k = k + 1
+    if k > 8:
+        k = k*2
         end
-    i = i + 1
     end
+k
 '''
 
 snippet2 = '''
@@ -19,9 +20,7 @@ def Real foo(Real x, Int y):
     x = x - 3
     y / x
     end
-print foo(23.,5)
-print foo(12+3.,3)
-print foo(sin(4.),8//3)
+cos(foo(sin(4.),8//3))
 '''
 
 snippet3 = '''
@@ -33,26 +32,13 @@ def Int fibb(Int lim):
         temp = a + b
         b = a
         a = temp
-        print a
         end
     a
     end
 fibb(100)
 '''
 
-def getScimpleOutput(code):
-    # Get REPL results
-    p = subprocess.Popen(["python","./scic",'--quiet'],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
-    jitResults = p.communicate(code,timeout=2)[0].strip().splitlines()
-    if p.poll():
-        p.terminate()
-    # Get compiled results
-    f = open("/tmp/scimpleTest.sy",'w')
-    f.write(code)
-    f.close()
-    retValue = subprocess.call(["python","./scic",'/tmp/scimpleTest.sy','--output','/tmp/scimpleTest'])
-    compiledResults = subprocess.check_output('/tmp/scimpleTest').strip().splitlines()
-    return jitResults, compiledResults, retValue
+jit = scimple.ScimpleJIT(True,True,False,True)
 
 class ScimpleTester(unittest.TestCase):
     def testParenHandling(self):
@@ -71,7 +57,7 @@ class ScimpleTester(unittest.TestCase):
 
 
     def testSameAsPython(self):
-        # Commands to test
+        # Commands which should yield identical results as python
         expressions = [
             "3 + 435.",
             "24.-23/(5.3/2)*3.",
@@ -96,50 +82,30 @@ class ScimpleTester(unittest.TestCase):
             "sin(43.**(5.%2.2)) - tan(.2**3)",
             "6.*10**5",
             "sin(atan(32.423-32.)/3.) + (12-True)"]
-        commands = 'print '+'\nprint '.join(expressions).strip() + '\n'
-        # Get python results
-        pythonResults = map(eval,expressions)
-        # Get Scimple Results
-        jitResults, compiledResults, ret = getScimpleOutput(commands)
-        self.assertEqual(ret,0)
-        # Compiled results should be identical to REPL results
-        self.assertListEqual(jitResults,compiledResults)
-        # All of these tests should return the same type and value as Python
-        for p, s, e in zip(pythonResults,jitResults,expressions):
-            if type(p) is float:
-                self.assertIn('.',s,msg=e)
-                self.assertAlmostEqual(p,float(s),places=5,msg=e)
-            elif type(p) is bool:
-                self.assertIn(s,["0",'1'],msg=e)
-                self.assertEqual(p,s=="1",msg=e)
-            elif type(p) is int:
-                self.assertNotIn('.',s,msg=e)
-                self.assertEqual(p,int(s),msg=e)
-            else:
-                raise ValueError("Your test sucks.")
-        return
+        for e in expressions:
+            pythonResults = eval(e)
+            scimpleResults = jit.runCommand(e)
+            self.assertEqual(pythonResults,scimpleResults)
+
+
+    def test_memory(self):
+        jit.runCommand("i = 23.")
+        scimpleResults = jit.runCommand("i")
+        self.assertEqual(scimpleResults,23.)
+        scimpleResults = jit.runCommand("i = 2.\n\ni=i+1\ni")
+        self.assertEqual(scimpleResults,3.)
+
 
     def test_ifWhile(self):
-        expected = ['4','6','8']
-        jitResults, compiledResults, ret = getScimpleOutput(snippet1)
-        self.assertEqual(ret,0)
-        self.assertListEqual(jitResults,expected)
-        self.assertListEqual(compiledResults,expected)
+        scimpleResults = jit.runCommand(snippet1)
+        self.assertEqual(scimpleResults,18)
+
 
     def test_functions(self):
-        expected = [.25,.25,-0.532367619138325]
-        jitResults, compiledResults, ret = getScimpleOutput(snippet2)
-        self.assertEqual(ret,0)
-        self.assertEqual(len(expected),len(jitResults))
-        self.assertEqual(len(expected),len(compiledResults))
-        for i,j,k in zip(expected,jitResults,compiledResults):
-            self.assertEqual(j,k)
-            self.assertAlmostEqual(i,float(j),places=5)
-
-    def test_noargs(self):
-        jitResults, compiledResults, ret = getScimpleOutput(snippet3)
-        self.assertEqual(ret,0)
-        return
+        results = jit.runCommand(snippet2)
+        self.assertEqual(results,0.861607742935979)
+        results = jit.runCommand(snippet3)
+        self.assertEqual(results,144)
 
 
 if __name__ == "__main__":

@@ -1,9 +1,11 @@
-from ctypes import CFUNCTYPE, c_int
+from ctypes import CFUNCTYPE, c_int, c_double, c_bool
+import sys
 import re
 
 
 # Language definitions
-types = {'Real':'double','Int':'i32','Bool':'i1'}
+types = {'Real':'double','Int':'i32','Bool':'i1',"None":'void'}
+ctypemap = {"Real":c_double,'Int':c_int,'Bool':c_bool,"None":None}
 globalInit = {'Real':'1.0','Int':'1','Bool':'false'}
 
 
@@ -26,6 +28,7 @@ class ScimpleModule():
         self.header = []
         self.body = []
         self.main = []
+        self.lastAnonymous = None
         # Counters for naming schemes
         self.numRegisters = 0
         self.blockCounter = 0
@@ -49,9 +52,8 @@ class ScimpleModule():
             raise ValueError("ERROR: variable {} is already defined.".format(name))
         if isGlobal:
             ScimpleModule.globalVars[name] = dtype
+            self.ensureDeclared(name,'@usr_{} = global {} {}'.format(name,types[dtype],globalInit[dtype]))
             name = "@usr_{}".format(name)
-            self.alreadyDeclared.append(name)
-            self.header += ['{} = global {} {}'.format(name,types[dtype],globalInit[dtype])]
             out = []
         else:
             self.localVars[name] = dtype
@@ -91,9 +93,9 @@ class ScimpleModule():
 
     def callIfNeeded(self,jit):
         '''If the last JIT compilation created an anonymous function, run it.'''
-        if self.definedMain:
-            name = "anonymous_{}".format(ScimpleModule.anonNumber-1)
-            (CFUNCTYPE(c_int)(jit.get_function_address(name)))()
+        if self.lastAnonymous:
+            ret, retType, name = self.lastAnonymous
+            return (CFUNCTYPE(ctypemap[retType])(jit.get_function_address(name)))()
         return
 
 
@@ -101,14 +103,19 @@ class ScimpleModule():
         '''Print the module as IR code.'''
         out = list(self.header)
         out += self.body
-        self.definedMain = False
-        if self.main:
-            self.definedMain = True
+        if self.main or self.replMode:
             mainName = "main"
+            ret, retType = "0", "Int"
             if self.replMode:
                 mainName = self.newAnonymousFunction()
-            out += ["define i32 @{}()".format(mainName) + "{"]
+                if self.lastOutput:
+                    ret, retType,  _ = self.lastOutput
+                else:
+                    ret, retType = "", "None"
+                self.lastAnonymous = ret, retType, mainName
+            out += ["define {} @{}()".format(types[retType], mainName) + "{"]
             out += ["entry:"]
             out += ["    "*(':' not in l)+l for l in self.main]
-            out += ["    ret i32 0\n}"]
+            out += ["    ret {} {}".format(types[retType],ret)+'\n}']
+            self.lastOutput = None
         return '\n'.join(out) + '\n'

@@ -3,7 +3,7 @@ import sys
 from lexer import *
 
 # Language definitions
-types = {'Real':'double','Int':'i32','Bool':'i1'}
+types = {'Real':'double','Int':'i32','Bool':'i1',"None":'void'}
 conversions = {"RealInt":[True,"{} = fptosi double {} to i32"],
                "IntReal":[False,"{} = sitofp i32 {} to double"],
                "RealBool":[True,"{} = fcmp one double {}, 0.0"],
@@ -114,7 +114,7 @@ class ASTNode():
             out = left[2] + inputs[0][2]
             out += ["store {} {}, {}* {}".format(
                 types[inputs[0][1]],inputs[0][0],types[left[1]],left[0])]
-            return types[inputs[0][1]], m.getVariable(inputs[0][0]), out
+            return "", "None", out
         if self.token.name in ['and','or','xor']:
             addr = m.newRegister()
             out = inputs[0][2] + inputs[1][2]
@@ -233,7 +233,7 @@ def evalPrintStatement(m,right):
     elif right[1] == "Bool":
         m.ensureDeclared("printInt",'@printInt = external global [4 x i8]')
         out += ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i1 {})".format(right[0])]
-    return "", "", out
+    return "", "None", out
 
 
 def findMatching(s,start=0,left='(',right=')'):

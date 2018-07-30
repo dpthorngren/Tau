@@ -21,7 +21,7 @@ class InputBuffer():
         self.quiet = quiet
         self.stringInput = stringInput
         if stringInput:
-            self.buffer = [line for line in source.splitlines() if line]
+            self.buffer = [line.strip() for line in source.splitlines() if line]
 
 
     def fillBuffer(self,level=0):
@@ -51,7 +51,7 @@ class InputBuffer():
     def getLine(self,level=0):
         if not self.buffer:
             self.fillBuffer(level)
-        return self.buffer.pop()
+        return self.buffer.pop(0)
 
 
     def peek(self, level=0):
@@ -63,7 +63,7 @@ class InputBuffer():
     def end(self,level=0):
         nextline = self.peek(level)
         if nextline.strip() == "end":
-            self.buffer.pop()
+            self.buffer.pop(0)
             return True
         return False
 
@@ -152,7 +152,7 @@ def lex(code,debugLexer=False):
         raise ValueError("ERROR: Cannot interpret code: {}".format(code))
     # TODO: Locate unary operators, function calls, better assignment system, token combination errors
     if debugLexer:
-        sys.stderr.write(code+" ===> "+str([t.name for t in tokens])+'\n')
+        sys.stderr.write("LEXER: "+code+" ===> "+str([t.name for t in tokens])+'\n')
     return tokens
 
 
