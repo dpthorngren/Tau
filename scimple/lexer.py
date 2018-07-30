@@ -69,8 +69,9 @@ class InputBuffer():
 
 
 class Token():
-    precedence = ['print','=','and','or','xor','<=','>=','<','>','!=','==',
-                  '-','+','%','*','//','/','**','()','literal','name','type']
+    precedence = ['print','=','+=','-=','/=','//=','*=','**=','%=','and','or',
+                  'xor','<=','>=','<','>','!=','==', '-','+','%','*','//','/',
+                  '**','()','literal','name','type']
 
     def __init__(self,name,data=None):
         self.name = name
@@ -109,9 +110,17 @@ def lex(code,debugLexer=False):
             unprocessed = unprocessed[len(match.group()):].strip()
             continue
         # Identify basic symbols
-        match = re.match(r'(,|\+|-|\*\*?|%|//?|<=?|>=?|==?)',unprocessed)
+        match = re.match(r'(,|\+|-|\*\*?|%|//?|<=?|>=?|==)(?!\*?/?=)',unprocessed)
         if match:
             tokens.append(Token(match.group()))
+            unprocessed = unprocessed[len(match.group()):].strip()
+            continue
+        # Identify assignment operation
+        match = re.match(r'((\+|-|//?|\*\*?|%)?=)',unprocessed)
+        if match:
+            if len(tokens) != 1 or tokens[0].name != 'name':
+                raise ValueError("ERROR: Assignment must be immeditely follow variable name.")
+            tokens.append(Token(match.group(),tokens.pop(0).data))
             unprocessed = unprocessed[len(match.group()):].strip()
             continue
         # Identify parentheses and eat the contents
@@ -150,7 +159,7 @@ def lex(code,debugLexer=False):
         if unprocessed.startswith(")"):
             raise ValueError("ERROR: Unmatched ending parenthesis.")
         raise ValueError("ERROR: Cannot interpret code: {}".format(code))
-    # TODO: Locate unary operators, function calls, better assignment system, token combination errors
+    # TODO: Locate unary operators, function calls, token combination errors
     if debugLexer:
         sys.stderr.write("LEXER: "+code+" ===> "+str([t.name for t in tokens])+'\n')
     return tokens

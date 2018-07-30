@@ -30,9 +30,11 @@ class ASTNode():
         if self.token.name == "print":
             self.children = [ASTNode(rightTokens,self.module)]
             return
-        if self.token.name == "=":
+        if self.token.name in ['=','+=','-=','/=','//=','**=','*=','%=']:
+            if self.token.name != '=':
+                rightTokens = [Token('name',self.token.data),Token(self.token.name[:-1])] + rightTokens
+                self.token.name = '='
             self.children = [ASTNode(rightTokens,self.module)]
-            self.assignmentTarget = leftTokens[0].data
             self.dtype = self.children[0].dtype
             return
         if self.token.name in ['and','or','xor']:
@@ -103,7 +105,7 @@ class ASTNode():
         if self.token.name == "print":
             return evalPrintStatement(m,inputs[0])
         if self.token.name == '=':
-            name = self.assignmentTarget
+            name = self.token.data
             if not re.match(r"[a-zA-Z_]\w*",name):
                 raise ValueError("ERROR: Cannot assign to {}.".format(name))
             left = m.getVariable(name)
@@ -175,14 +177,16 @@ class ASTNode():
         return addr, self.dtype, out
 
 
-    def simpleBinary(self,left,right):
+    def simpleBinary(self,left,right,op=None):
+        if op is None:
+            op = self.token.name
         addr = self.module.newRegister()
         if left[1] != right[1] or any([i not in types.keys() for i in [left[1], right[1]]]):
-            raise ValueError("ERROR: Cannot {} types {} and {}".format(self.token.name,left[1],right[1]))
-        function = {'+':"add","*":"mul","%":"rem",'/':'div',"//":"div","-":"sub"}[self.token.name]
+            raise ValueError("ERROR: Cannot {} types {} and {}".format(op,left[1],right[1]))
+        function = {'+':"add","*":"mul","%":"rem",'/':'div',"//":"div","-":"sub"}[op]
         if self.dtype is "Real":
             function = 'f'+function
-        if self.token.name in ['%','//'] and self.dtype is "Int":
+        if op in ['%','//'] and self.dtype is "Int":
             function = 's'+function
         out = left[2] + right[2]
         out += ["{} = {} {} {}, {}".format(

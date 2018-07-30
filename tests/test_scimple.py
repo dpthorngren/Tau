@@ -88,12 +88,26 @@ class ScimpleTester(unittest.TestCase):
             self.assertEqual(pythonResults,scimpleResults)
 
 
-    def test_memory(self):
+    def test_assignment(self):
         jit.runCommand("i = 23.")
         scimpleResults = jit.runCommand("i")
         self.assertEqual(scimpleResults,23.)
         scimpleResults = jit.runCommand("i = 2.\n\ni=i+1\ni")
         self.assertEqual(scimpleResults,3.)
+        scimpleResults = jit.runCommand("i += 2.\ni")
+        self.assertEqual(scimpleResults,5.)
+        scimpleResults = jit.runCommand("i *= 2.\ni")
+        self.assertEqual(scimpleResults,10.)
+        scimpleResults = jit.runCommand("i **= 2.\ni")
+        self.assertEqual(scimpleResults,100.)
+        scimpleResults = jit.runCommand("i /= 20.\ni")
+        self.assertEqual(scimpleResults,5.)
+        scimpleResults = jit.runCommand("i %= 3.\ni")
+        self.assertEqual(scimpleResults,2.)
+        scimpleResults = jit.runCommand("i2 = 15\ni2 //= 4\ni2")
+        self.assertEqual(scimpleResults,3)
+        scimpleResults = jit.runCommand("i2 %= 2\ni2")
+        self.assertEqual(scimpleResults,1)
 
 
     def test_ifWhile(self):
