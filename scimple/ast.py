@@ -32,7 +32,7 @@ class ASTNode():
             return
         if self.token.name in ['=','+=','-=','/=','//=','**=','*=','%=']:
             if self.token.name != '=':
-                rightTokens = [Token('name',self.token.data),Token(self.token.name[:-1])] + rightTokens
+                rightTokens = [Token('name',self.token.data),Token(self.token.name[:-1]),Token('()',rightTokens)]
                 self.token.name = '='
             self.children = [ASTNode(rightTokens,self.module)]
             self.dtype = self.children[0].dtype

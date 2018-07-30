@@ -100,7 +100,7 @@ class ScimpleTester(unittest.TestCase):
         self.assertEqual(scimpleResults,10.)
         scimpleResults = jit.runCommand("i **= 2.\ni")
         self.assertEqual(scimpleResults,100.)
-        scimpleResults = jit.runCommand("i /= 20.\ni")
+        scimpleResults = jit.runCommand("i /= 30.-10.\ni")
         self.assertEqual(scimpleResults,5.)
         scimpleResults = jit.runCommand("i %= 3.\ni")
         self.assertEqual(scimpleResults,2.)
