@@ -139,8 +139,10 @@ def parseTopLevel(module,source,forJIT=False):
         module.localVars = {}
         return
     # Top-level statement
+    module.isGlobal = forJIT
     module.lastOutput = parseBlock(module,source,1,forJIT)
     module.main += module.lastOutput[2]
+    module.isGlobal = False
     return
 
 
@@ -151,7 +153,7 @@ def parseBlock(module,source,level=0,forJIT=False):
     if re.match("^\s*if .*:$",blockHead): # If statement
         preds = []
         n = module.blockCounter
-        astOutput = ASTNode(lex(blockHead.strip()[2:-1],module.debugLexer),module,forJIT).castTo("Bool").evaluate()
+        astOutput = ASTNode(lex(blockHead.strip()[2:-1],module.debugLexer),module).castTo("Bool").evaluate()
         out += ["    "+i for i in astOutput[2]]
         out += ["    br i1 {}, label %if{}_then, label %if{}_resume".format(astOutput[0],n,n)]
         out += ["if{}_then:".format(n)]
@@ -163,7 +165,7 @@ def parseBlock(module,source,level=0,forJIT=False):
         n = module.blockCounter
         out += ["    br label %while{}_condition".format(n)]
         out += ["while{}_condition:".format(n)]
-        astOutput = ASTNode(lex(blockHead.strip()[5:-1],module.debugLexer),module,forJIT).castTo("Bool").evaluate()
+        astOutput = ASTNode(lex(blockHead.strip()[5:-1],module.debugLexer),module).castTo("Bool").evaluate()
         out += ["    "+i for i in astOutput[2]]
         out += ["    br i1 {}, label %while{}_then, label %while{}_resume".format(astOutput[0],n,n)]
         out += ["while{}_then:".format(n)]
@@ -171,7 +173,7 @@ def parseBlock(module,source,level=0,forJIT=False):
         tail += ["while{}_resume:".format(n,n)]
         module.blockCounter += 1
     else: # Not a block start, so treat as a standard statement
-        output = ASTNode(lex(blockHead,module.debugLexer),module,forJIT).evaluate()
+        output = ASTNode(lex(blockHead,module.debugLexer),module).evaluate()
         out += ["    "+i for i in output[2]]
         return output[0], output[1], out
     # Process the block body

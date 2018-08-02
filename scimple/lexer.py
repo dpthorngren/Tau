@@ -71,7 +71,7 @@ class InputBuffer():
 class Token():
     precedence = ['print','=','+=','-=','/=','//=','*=','**=','%=','and','or',
                   'xor','<=','>=','<','>','!=','==', '-','+','%','*','//','/',
-                  '**','()','literal','name','type']
+                  '**','function','()','literal','name','type']
 
     def __init__(self,name,data=None):
         self.name = name
@@ -123,10 +123,15 @@ def lex(code,debugLexer=False):
             tokens.append(Token(match.group(),tokens.pop(0).data))
             unprocessed = unprocessed[len(match.group()):].strip()
             continue
-        # Identify parentheses and eat the contents
+        # Identify parentheses and function calls and eat the contents
         if unprocessed.startswith("("):
             right = findMatching(unprocessed)
-            tokens.append(Token("()",lex(unprocessed[1:right])))
+            if tokens and tokens[-1].name == "name":
+                # This is a function call!
+                caller = tokens.pop(-1).data
+                tokens.append(Token("function",[caller,lex(unprocessed[1:right])]))
+            else:
+                tokens.append(Token("()",lex(unprocessed[1:right])))
             unprocessed = unprocessed[right+1:].strip()
             continue
         # Identify real literals
@@ -150,10 +155,7 @@ def lex(code,debugLexer=False):
         # Identify names and types
         match = re.match(r"[a-zA-Z_]\w*",unprocessed)
         if match:
-            if match.group() in ['Real','Int','Bool']:
-                tokens.append(Token("type",match.group()))
-            else:
-                tokens.append(Token("name",match.group()))
+            tokens.append(Token("name",match.group()))
             unprocessed = unprocessed[len(match.group()):].strip()
             continue
         if unprocessed.startswith(")"):

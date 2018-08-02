@@ -1,12 +1,6 @@
-from ctypes import CFUNCTYPE, c_int, c_double, c_bool
+from builtins import *
 import sys
 import re
-
-
-# Language definitions
-types = {'Real':'double','Int':'i32','Bool':'i1',"None":'void'}
-ctypemap = {"Real":c_double,'Int':c_int,'Bool':c_bool,"None":None}
-globalInit = {'Real':'1.0','Int':'1','Bool':'false'}
 
 
 class ScimpleModule():
@@ -21,6 +15,7 @@ class ScimpleModule():
         self.replMode = replMode
         self.debugAST = debugAST
         self.debugLexer = debugLexer
+        self.isGlobal = False
         # Module name lists
         self.alreadyDeclared = []
         self.localVars = {}
@@ -43,14 +38,14 @@ class ScimpleModule():
         return
 
 
-    def newVariable(self, name, dtype, isGlobal=False):
+    def newVariable(self, name, dtype):
         '''Checks that a variable has a valid name and isn't already in use,
            then creates the variable.'''
         if not re.match("^[a-zA-Z][\w\d]*$",name):
             raise ValueError("ERROR: {} is not a valid variable name.".format(name))
         if name in self.localVars.keys() or name in ScimpleModule.globalVars.keys():
             raise ValueError("ERROR: variable {} is already defined.".format(name))
-        if isGlobal:
+        if self.isGlobal:
             ScimpleModule.globalVars[name] = dtype
             self.ensureDeclared(name,'@usr_{} = global {} {}'.format(name,types[dtype],globalInit[dtype]))
             name = "@usr_{}".format(name)
