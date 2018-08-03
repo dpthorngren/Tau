@@ -17,7 +17,6 @@ class ASTNode():
         if module.debugAST:
             sys.stderr.write("AST: "+self.token.name+', '+str(self.token.data)+"\n")
         # Now, construct the node according to the operator found
-        # TODO: verify that the correct number of left and right tokens were found
         if self.token.name == "print":
             self.children = [ASTNode(rightTokens,self.module)]
         elif self.token.name in ['=','+=','-=','/=','//=','**=','*=','%=']:
@@ -49,8 +48,10 @@ class ASTNode():
             self.dtype = "Real"
             self.children = [ASTNode(t,self.module).castTo("Real") for t in [leftTokens,rightTokens]]
         elif self.token.name == "literal":
+            assertEmpty(leftTokens,rightTokens)
             self.dtype = self.token.data[0]
         elif self.token.name == "function":
+            assertEmpty(leftTokens,rightTokens)
             caller, data = self.token.data
             if caller in self.module.userFunctions.keys():
                 # Known, user-defined function
@@ -65,12 +66,13 @@ class ASTNode():
                 self.dtype = self.children[0].dtype
             self.token.data = [caller,self.dtype]
         elif self.token.name == '()':
+            assertEmpty(leftTokens,rightTokens)
             self.token.name = "()"
             self.children = [ASTNode(self.token.data,self.module)]
             self.dtype = self.children[0].dtype
         elif self.token.name == "name":
+            assertEmpty(leftTokens,rightTokens)
             _, self.dtype, _ = self.module.getVariable(self.token.data,True)
-            return
         else:
             raise ValueError("ERROR: Can't parse:'{}'.\n".format(self.token.name))
 
@@ -100,6 +102,11 @@ class ASTNode():
         converterNode.children = [self]
         converterNode.dtype = dtype
         return converterNode
+
+
+def assertEmpty(left,right):
+    if left or right:
+        raise ValueError("ERROR: Unexpected tokens.")
 
 
 def splitArguments(tokens):

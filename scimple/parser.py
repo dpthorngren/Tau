@@ -33,15 +33,11 @@ class ScimpleJIT():
            as a new module in the current JIT session.'''
         # Generate the IR code from the source
         m = ScimpleModule(True,self.debugAST,self.debugLexer)
-        try:
-            if loop:
-                while not source.end():
-                    parseTopLevel(m,source,True)
-            else:
+        if loop:
+            while not source.end():
                 parseTopLevel(m,source,True)
-        except ValueError, e:
-            print str(e).strip()
-            return
+        else:
+            parseTopLevel(m,source,True)
         irCode = str(m)
         if self.debugIR:
             sys.stderr.write("===== BEGIN IR =====\n")
@@ -71,7 +67,10 @@ class ScimpleJIT():
             print "ScimpleREPL 0.000001"
             print "Almost no features, massively buggy.  Good luck!"
         while not source.end():
-            output = self._runFromSource_(source)
+            try:
+                output = self._runFromSource_(source)
+            except ValueError, e:
+                print str(e).strip()
             if output is not None:
                 print output
         return

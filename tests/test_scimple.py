@@ -122,5 +122,16 @@ class ScimpleTester(unittest.TestCase):
         self.assertEqual(results,144)
 
 
+    def testErrorChecking(self):
+        with self.assertRaises(ValueError):
+            jit.runCommand("x1 = stuff")
+        with self.assertRaises(ValueError):
+            jit.runCommand("x3 = 2.43 a")
+        with self.assertRaises(ValueError):
+            jit.runCommand("x4 = sin(2.43) 23432")
+        with self.assertRaises(ValueError):
+            jit.runCommand("print 3 x4 2")
+
+
 if __name__ == "__main__":
     unittest.main()
