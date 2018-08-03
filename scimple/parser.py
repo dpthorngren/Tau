@@ -108,19 +108,17 @@ def compileFile(filename,outputFile="a.out",debugIR=False,debugAST=False,debugLe
 
 def parseTopLevel(module,source,forJIT=False):
     # Classify the block
-    blockHead = source.peek()
-    if re.match("^\s*def .*(.*):\s*",blockHead): # Function declaration
+    blockHead = lex(source.peek(),False)
+    # if re.match("^\s*def .*(.*):\s*",blockHead): # Function declaration
+    if blockHead[0].name == 'def':
         # Determine function name and return type
-        blockHead = source.getLine()
-        lParen = blockHead.find("(")
-        rParen = findMatching(blockHead,lParen)
-        dtype, funcName = blockHead[3:lParen].strip().split(" ")
+        blockHead = lex(source.getLine(),module.debugLexer)
+        dtype = blockHead[1].data
+        funcName = blockHead[2].data[0]
+        args = [[i.data, j.data] for i,j in splitArguments(blockHead[2].data[1])]
         if funcName in module.userFunctions.keys():
             raise ValueError("ERROR: Function {} is already defined.".format(funcName))
         # Handle function arguments
-        args = []
-        if blockHead[lParen+1:rParen].strip() != "":
-            args = [i.strip().split(" ") for i in blockHead[lParen+1:rParen].split(",")]
         module.body += ["define {} @{}({})".format(types[dtype],funcName,",".join([types[i]+" %arg_"+j for i,j in args])) + "{"]
         for argType, argName in args:
             mem = module.newVariable(argName, argType)
@@ -137,35 +135,35 @@ def parseTopLevel(module,source,forJIT=False):
         module.alreadyDeclared.append(funcName)
         module.body += ["    ret {} {}".format(types[dtype],output[0]) + '}']
         module.localVars = {}
-        return
-    # Top-level statement
-    module.isGlobal = forJIT
-    module.lastOutput = parseBlock(module,source,1,forJIT)
-    module.main += module.lastOutput[2]
-    module.isGlobal = False
+    else:
+        # Top-level statement
+        module.isGlobal = forJIT
+        module.lastOutput = parseBlock(module,source,1,forJIT)
+        module.main += module.lastOutput[2]
+        module.isGlobal = False
     return
 
 
 def parseBlock(module,source,level=0,forJIT=False):
     out = []
     tail = []
-    blockHead = source.getLine(level)
-    if re.match("^\s*if .*:$",blockHead): # If statement
+    blockHead = lex(source.getLine(level),module.debugLexer)
+    if blockHead[0].name == 'if':
         preds = []
         n = module.blockCounter
-        astOutput = ASTNode(lex(blockHead.strip()[2:-1],module.debugLexer),module).castTo("Bool").evaluate()
+        astOutput = ASTNode(blockHead[1:],module).castTo("Bool").evaluate()
         out += ["    "+i for i in astOutput[2]]
         out += ["    br i1 {}, label %if{}_then, label %if{}_resume".format(astOutput[0],n,n)]
         out += ["if{}_then:".format(n)]
         tail = ["    br label %if{}_resume".format(n)]
         tail += ["if{}_resume:".format(n,n)]
         module.blockCounter += 1
-    elif re.match("^\s*while .*:$",blockHead): # While statement
+    elif blockHead[0].name == 'while':
         preds = []
         n = module.blockCounter
         out += ["    br label %while{}_condition".format(n)]
         out += ["while{}_condition:".format(n)]
-        astOutput = ASTNode(lex(blockHead.strip()[5:-1],module.debugLexer),module).castTo("Bool").evaluate()
+        astOutput = ASTNode(blockHead[1:],module).castTo("Bool").evaluate()
         out += ["    "+i for i in astOutput[2]]
         out += ["    br i1 {}, label %while{}_then, label %while{}_resume".format(astOutput[0],n,n)]
         out += ["while{}_then:".format(n)]
@@ -173,7 +171,7 @@ def parseBlock(module,source,level=0,forJIT=False):
         tail += ["while{}_resume:".format(n,n)]
         module.blockCounter += 1
     else: # Not a block start, so treat as a standard statement
-        output = ASTNode(lex(blockHead,module.debugLexer),module).evaluate()
+        output = ASTNode(blockHead,module).evaluate()
         out += ["    "+i for i in output[2]]
         return output[0], output[1], out
     # Process the block body
