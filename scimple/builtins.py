@@ -11,6 +11,11 @@ conversions = {"RealInt":[True,"{} = fptosi double {} to i32"],
 ctypemap = {"Real":c_double,'Int':c_int,'Bool':c_bool,"None":None}
 types = {'Real':'double','Int':'i32','Bool':'i1',"None":'void'}
 globalInit = {'Real':'1.0','Int':'1','Bool':'false'}
+castingRules = {
+    "Real":["Real"],
+    "Int":["Int","Real"],
+    "Bool":["Bool","Int","Real"]
+}
 
 
 def callFunction(inputs, token, mod):
@@ -114,22 +119,3 @@ def boolOperators(inputs, token, mod):
     addr = mod.newRegister()
     out = ["{} = {} i1 {}, {}".format(addr,token.name,left[0],right[0])]
     return addr, "Bool", out
-
-
-# This catalog tells the AST what functions to call for a given token.
-builtinCatalog = {
-    'print':printStatement,
-    'function':callFunction,
-    '=':assignment,
-    'literal':literal,
-    'name':name,
-    'Convert':convert,
-    '**':power,
-    '()':parentheses
-}
-for t in ['and','or','xor']:
-    builtinCatalog[t] = boolOperators
-for t in ['<=','>=','<','>','!=','==']:
-    builtinCatalog[t] = comparison
-for t in ['-','+','*','/','//','%']:
-    builtinCatalog[t] = simpleBinary

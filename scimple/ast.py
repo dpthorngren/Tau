@@ -5,6 +5,8 @@ from builtins import *
 
 
 class ASTNode():
+    builtinCatalog = {}
+
     def __init__(self,tokens,module):
         # Keep reference to parent module
         self.module = module
@@ -20,33 +22,15 @@ class ASTNode():
         if self.token.name == "print":
             self.children = [ASTNode(rightTokens,self.module)]
         elif self.token.name in ['=','+=','-=','/=','//=','**=','*=','%=']:
+            # Assignment operator and variants
             if self.token.name != '=':
                 rightTokens = [Token('name',self.token.data),Token(self.token.name[:-1]),Token('()',rightTokens)]
                 self.token.name = '='
             self.children = [ASTNode(rightTokens,self.module)]
             self.dtype = self.children[0].dtype
-        elif self.token.name in ['and','or','xor']:
-            self.dtype = "Bool"
-            self.children = [ASTNode(t,self.module).castTo("Bool") for t in [leftTokens, rightTokens]]
-        elif self.token.name in ['<=','>=','<','>','!=','==']:
-            self.children = [ASTNode(t,self.module) for t in [leftTokens, rightTokens]]
-            childType = "Bool"
-            if 'Real' in [i.dtype for i in self.children]:
-                childType = 'Real'
-            elif 'Int' in [i.dtype for i in self.children]:
-                childType = 'Int'
-            self.children = [i.castTo(childType) for i in self.children]
-            self.dtype = "Bool"
-        elif self.token.name in ['-','+','%','*']:
+        elif self.token.name in ['and','or','xor','-','+','%','*','//','/','**','<=','>=','<','>','!=','==']:
+            # Binary operators!
             self.children = [ASTNode(t,self.module) for t in [leftTokens,rightTokens]]
-            self.dtype = 'Real' if 'Real' in [i.dtype for i in self.children] else "Int"
-            self.children = [i.castTo(self.dtype) for i in self.children]
-        elif self.token.name == '//':
-            self.dtype = "Int"
-            self.children = [ASTNode(t,self.module).castTo("Int") for t in [leftTokens,rightTokens]]
-        elif self.token.name == '/' or self.token.name == "**":
-            self.dtype = "Real"
-            self.children = [ASTNode(t,self.module).castTo("Real") for t in [leftTokens,rightTokens]]
         elif self.token.name == "literal":
             assertEmpty(leftTokens,rightTokens)
             self.dtype = self.token.data[0]
@@ -75,6 +59,40 @@ class ASTNode():
             _, self.dtype, _ = self.module.getVariable(self.token.data,True)
         else:
             raise ValueError("ERROR: Can't parse:'{}'.\n".format(self.token.name))
+        # Resolve the types given the child types and available builtins.
+        self.resolveTyping()
+
+
+    def resolveTyping(self,name=None,catalog=None):
+        if name is None:
+            name = self.token.name
+        if catalog is None:
+            catalog = self.builtinCatalog
+        # Handle untyped options
+        if name in catalog.keys() and type(catalog[name]) is not dict:
+            self.evaluator = catalog[name]
+            return
+        argTypes = [i.dtype for i in self.children]
+        best, bestArgs, cost = None, [], 9999999
+        for candidate in catalog[name]:
+            candidateCost = 0
+            candidateArgs = candidate.split(' ')
+            if len(candidateArgs) != len(argTypes):
+                continue
+            try:
+                for a, ca in zip(argTypes,candidateArgs):
+                    candidateCost += castingRules[a].index(ca)
+            except ValueError:
+                continue
+            if candidateCost < cost:
+                best, bestArgs, cost = candidate, candidateArgs, candidateCost
+            elif candidateCost == cost:
+                raise ValueError("ERROR: Tie for overload resolution of token '{}' with types {}".format(smeelf.token.name,argTypes))
+        if best is None:
+            raise ValueError("No valid candidates for token '{}' with types {}".format(name,argTypes))
+        # We've found the best candidate, record  findings to self
+        self.evaluator, self.dtype = catalog[name][best]
+        self.children = [i.castTo(j) for i, j in zip(self.children,bestArgs)]
 
 
     def evaluate(self):
@@ -82,7 +100,7 @@ class ASTNode():
         inputs = [i.evaluate() for i in self.children]
         out = sum([i[2] for i in inputs],[])
         try:
-            result = builtinCatalog[self.token.name](inputs,self.token,self.module)
+            result = self.evaluator(inputs,self.token,self.module)
             return result[0], result[1], out + result[2]
         except KeyError:
             raise ValueError("Internal Error: Unrecognized operator code {}".format(self.token.name))
@@ -101,6 +119,7 @@ class ASTNode():
         converterNode.token = Token("Convert",dtype)
         converterNode.children = [self]
         converterNode.dtype = dtype
+        converterNode.evaluator = convert
         return converterNode
 
 
@@ -134,3 +153,26 @@ def findMatching(s,start=0,left='(',right=')'):
             if level == 0:
                 return i+start
     raise ValueError("More {} than {}".format(left,right))
+
+
+# This catalog tells the AST what functions to call for a given token.
+# For type-dependent builtins, it also says the accepted and return types.
+ASTNode.builtinCatalog = {
+    # Untyped builtins
+    'function':callFunction,
+    '=':assignment,
+    'literal':literal,
+    'name':name,
+    "()":parentheses,
+    'print':printStatement,
+    # Typed builtins
+    '**':{"Real Real":[power,"Real"]},
+    '/':{"Real Real":[simpleBinary,"Real"]},
+    '//':{"Int Int":[simpleBinary,"Int"]},
+}
+for t in ['and','or','xor']:
+    ASTNode.builtinCatalog[t] = {'Bool Bool':[boolOperators,'Bool']}
+for t in ['<=','>=','<','>','!=','==']:
+    ASTNode.builtinCatalog[t] = {ty+' '+ty:[comparison,'Bool'] for ty in ["Real","Int","Bool"]}
+for t in ['-','+','*','%']:
+    ASTNode.builtinCatalog[t] = {ty+' '+ty:[simpleBinary,ty] for ty in ["Real","Int","Bool"]}
