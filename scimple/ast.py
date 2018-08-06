@@ -107,9 +107,8 @@ class ASTNode():
     def evaluate(self):
         m = self.module
         inputs = [i.evaluate() for i in self.children]
-        out = sum([i[2] for i in inputs],[])
         result = self.evaluator(inputs,self.token,self.module)
-        return result[0], result[1], out + result[2]
+        return result[0], result[1]
 
 
     def castTo(self,dtype,force=False):

@@ -106,75 +106,70 @@ def compileFile(filename,outputFile="a.out",debugIR=False,debugAST=False,debugLe
     return
 
 
-def parseTopLevel(module,source,forJIT=False):
+def parseTopLevel(mod,source,forJIT=False):
     # Classify the block
     blockHead = lex(source.peek(),False)
     # if re.match("^\s*def .*(.*):\s*",blockHead): # Function declaration
     if blockHead[0].name == 'def':
         # Determine function name and return type
-        blockHead = lex(source.getLine(),module.debugLexer)
+        blockHead = lex(source.getLine(),mod.debugLexer)
         dtype = blockHead[1].data
         funcName = blockHead[2].data[0]
         args = [[i.data, j.data] for i,j in splitArguments(blockHead[2].data[1])]
-        if funcName in module.userFunctions.keys():
+        if funcName in mod.userFunctions.keys():
             raise ValueError("ERROR: Function {} is already defined.".format(funcName))
         # Handle function arguments
-        module.body += ["define {} @{}({})".format(types[dtype],funcName,",".join([types[i]+" %arg_"+j for i,j in args])) + "{"]
+        mod.body += ["define {} @{}({})".format(types[dtype],funcName,",".join([types[i]+" %arg_"+j for i,j in args])) + "{"]
         for argType, argName in args:
-            mem = module.newVariable(argName, argType)
-            module.body += ["    "+i for i in mem[2]]
-            module.body += ["    store {} {}, {}* {}".format(types[argType],"%arg_"+argName,types[mem[1]],mem[0])]
+            mem = mod.newVariable(argName, argType)
+            mod.body += ["    store {} {}, {}* {}".format(types[argType],"%arg_"+argName,types[mem[1]],mem[0])]
         # Read in the function body
         while not source.end():
-            output = parseBlock(module,source,1)
-            module.body += output[2]
+            output = parseBlock(mod,source,1)
         # Check that the return type is correct and end the function definition
         if dtype != output[1]:
             raise ValueError("ERROR: Return type ({}) does not match declaration ({}).".format(output[1],dtype))
-        module.userFunctions[funcName] = (dtype,args)
-        module.alreadyDeclared.append(funcName)
-        module.body += ["    ret {} {}".format(types[dtype],output[0]) + '}']
-        module.localVars = {}
+        mod.userFunctions[funcName] = (dtype,args)
+        mod.alreadyDeclared.append(funcName)
+        mod.body += ["    ret {} {}".format(types[dtype],output[0]) + '}']
+        mod.localVars = {}
     else:
         # Top-level statement
-        module.isGlobal = forJIT
-        module.lastOutput = parseBlock(module,source,1,forJIT)
-        module.main += module.lastOutput[2]
-        module.isGlobal = False
+        mod.isGlobal = forJIT
+        mod.out = mod.main
+        mod.lastOutput = parseBlock(mod,source,1,forJIT)
+        mod.out = mod.body
+        mod.isGlobal = False
     return
 
 
-def parseBlock(module,source,level=0,forJIT=False):
+def parseBlock(mod,source,level=0,forJIT=False):
     out = []
     tail = []
-    blockHead = lex(source.getLine(level),module.debugLexer)
+    blockHead = lex(source.getLine(level),mod.debugLexer)
     if blockHead[0].name == 'if':
-        preds = []
-        n = module.blockCounter
-        astOutput = ASTNode(blockHead[1:],module).castTo("Bool").evaluate()
-        out += ["    "+i for i in astOutput[2]]
-        out += ["    br i1 {}, label %if{}_then, label %if{}_resume".format(astOutput[0],n,n)]
-        out += ["if{}_then:".format(n)]
-        tail = ["    br label %if{}_resume".format(n)]
+        n = mod.blockCounter
+        astOutput = ASTNode(blockHead[1:],mod).castTo("Bool").evaluate()
+        mod.out += ["    br i1 {}, label %if{}_then, label %if{}_resume".format(astOutput[0],n,n)]
+        mod.out += ["if{}_then:".format(n)]
+        tail += ["    br label %if{}_resume".format(n)]
         tail += ["if{}_resume:".format(n,n)]
-        module.blockCounter += 1
+        mod.blockCounter += 1
     elif blockHead[0].name == 'while':
-        preds = []
-        n = module.blockCounter
-        out += ["    br label %while{}_condition".format(n)]
-        out += ["while{}_condition:".format(n)]
-        astOutput = ASTNode(blockHead[1:],module).castTo("Bool").evaluate()
-        out += ["    "+i for i in astOutput[2]]
-        out += ["    br i1 {}, label %while{}_then, label %while{}_resume".format(astOutput[0],n,n)]
-        out += ["while{}_then:".format(n)]
+        n = mod.blockCounter
+        mod.out += ["    br label %while{}_condition".format(n)]
+        mod.out += ["while{}_condition:".format(n)]
+        astOutput = ASTNode(blockHead[1:],mod).castTo("Bool").evaluate()
+        mod.out += ["    br i1 {}, label %while{}_then, label %while{}_resume".format(astOutput[0],n,n)]
+        mod.out += ["while{}_then:".format(n)]
         tail += ["    br label %while{}_condition".format(n)]
         tail += ["while{}_resume:".format(n,n)]
-        module.blockCounter += 1
+        mod.blockCounter += 1
     else: # Not a block start, so treat as a standard statement
-        output = ASTNode(blockHead,module).evaluate()
-        out += ["    "+i for i in output[2]]
-        return output[0], output[1], out
+        output = ASTNode(blockHead,mod).evaluate()
+        return output[0], output[1]
     # Process the block body
     while not source.end(level):
-        out += parseBlock(module,source,level+1,forJIT)[2]
-    return "", "None", out + tail
+        parseBlock(mod,source,level+1,forJIT)
+    mod.out += tail
+    return "", "None"

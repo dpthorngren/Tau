@@ -23,6 +23,7 @@ class ScimpleModule():
         self.header = []
         self.body = []
         self.main = []
+        self.out = self.body
         self.lastAnonymous = None
         # Counters for naming schemes
         self.numRegisters = 0
@@ -62,7 +63,8 @@ class ScimpleModule():
                 out += ["{} = alloca {}*".format(name,types[dtype])]
             else:
                 out += ["{} = alloca {}".format(name,types[dtype])]
-        return name, dtype, out
+        self.out += out
+        return name, dtype, []
 
 
     def getVariable(self, name, throw=False):
@@ -116,7 +118,7 @@ class ScimpleModule():
             if self.replMode:
                 mainName = self.newAnonymousFunction()
                 if self.lastOutput:
-                    ret, retType,  _ = self.lastOutput
+                    ret, retType = self.lastOutput
                 else:
                     ret, retType = "", "None"
                 self.lastAnonymous = ret, retType, mainName
