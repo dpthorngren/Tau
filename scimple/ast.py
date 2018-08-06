@@ -57,6 +57,15 @@ class ASTNode():
         elif self.token.name == "name":
             assertEmpty(leftTokens,rightTokens)
             _, self.dtype, _ = self.module.getVariable(self.token.data,True)
+        elif self.token.name == "indexing":
+            assertEmpty(leftTokens,rightTokens)
+            self.children = [ASTNode(self.token.data[1],self.module)]
+            self.dtype = self.children[0].dtype
+        elif self.token.name == "array":
+            self.children = [ASTNode(t,self.module) for t in splitArguments(self.token.data)]
+            self.dtype = self.children[0].dtype
+            self.children = [i.castTo(self.dtype) for i in self.children]
+            self.dtype = "array:" + self.dtype
         else:
             raise ValueError("ERROR: Can't parse:'{}'.\n".format(self.token.name))
         # Resolve the types given the child types and available builtins.
@@ -99,11 +108,8 @@ class ASTNode():
         m = self.module
         inputs = [i.evaluate() for i in self.children]
         out = sum([i[2] for i in inputs],[])
-        try:
-            result = self.evaluator(inputs,self.token,self.module)
-            return result[0], result[1], out + result[2]
-        except KeyError:
-            raise ValueError("Internal Error: Unrecognized operator code {}".format(self.token.name))
+        result = self.evaluator(inputs,self.token,self.module)
+        return result[0], result[1], out + result[2]
 
 
     def castTo(self,dtype,force=False):
@@ -160,16 +166,19 @@ def findMatching(s,start=0,left='(',right=')'):
 ASTNode.builtinCatalog = {
     # Untyped builtins
     'function':callFunction,
-    '=':assignment,
     'literal':literal,
     'name':name,
     "()":parentheses,
     'print':printStatement,
+    'array':createArray,
+    'indexing':indexArray,
     # Typed builtins
+    '=':{i:[assignment,"None"] for i in ['Real','Int','Bool']},
     '**':{"Real Real":[power,"Real"]},
     '/':{"Real Real":[simpleBinary,"Real"]},
     '//':{"Int Int":[simpleBinary,"Int"]},
 }
+ASTNode.builtinCatalog['=']['array:Int'] = [arrayAssignment,"None"]
 for t in ['and','or','xor']:
     ASTNode.builtinCatalog[t] = {'Bool Bool':[boolOperators,'Bool']}
 for t in ['<=','>=','<','>','!=','==']:

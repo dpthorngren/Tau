@@ -71,7 +71,7 @@ class InputBuffer():
 class Token():
     precedence = ['print','=','+=','-=','/=','//=','*=','**=','%=','and','or',
                   'xor','<=','>=','<','>','!=','==', '-','+','%','*','//','/',
-                  '**','function','()','literal','name','type']
+                  '**','function','array','()','indexing','literal','name','type']
 
     def __init__(self,name,data=None):
         self.name = name
@@ -132,6 +132,18 @@ def lex(code,debugLexer=False):
                 tokens.append(Token("function",[caller,lex(unprocessed[1:right])]))
             else:
                 tokens.append(Token("()",lex(unprocessed[1:right])))
+            unprocessed = unprocessed[right+1:].strip()
+            continue
+        # Identify array literals and indexing operations
+        if unprocessed.startswith("["):
+            right = findMatching(unprocessed,left='[',right=']')
+            if tokens and tokens[-1].name == "name":
+                # This is an indexing operation
+                # TODO handle indexing of anonymous objects e.g. [1,2,3,5][2]
+                caller = tokens.pop(-1).data
+                tokens.append(Token("indexing",[caller,lex(unprocessed[1:right])]))
+            else:
+                tokens.append(Token("array",lex(unprocessed[1:right])))
             unprocessed = unprocessed[right+1:].strip()
             continue
         # Identify real literals

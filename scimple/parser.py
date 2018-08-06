@@ -63,6 +63,7 @@ class ScimpleJIT():
     def runREPL(self):
         '''Starts a REPL in the JIT session.'''
         source = InputBuffer('-')
+        output = None
         if not self.quiet:
             print "ScimpleREPL 0.000001"
             print "Almost no features, massively buggy.  Good luck!"

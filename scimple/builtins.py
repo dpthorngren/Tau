@@ -9,12 +9,16 @@ conversions = {"RealInt":[True,"{} = fptosi double {} to i32"],
                "BoolReal":[False,"{} = uitofp i1 {} to double"],
                "BoolInt":[False,"{} = zext i1 {} to i32"]}
 ctypemap = {"Real":c_double,'Int':c_int,'Bool':c_bool,"None":None}
+# types = {'Real':'double','Int':'i32','Bool':'i1',"None":'void'}
+# TODO better type manager
 types = {'Real':'double','Int':'i32','Bool':'i1',"None":'void'}
+bitsizes = {'Real':64,'Int':32,'Bool':8}
 globalInit = {'Real':'1.0','Int':'1','Bool':'false'}
 castingRules = {
     "Real":["Real"],
     "Int":["Int","Real"],
-    "Bool":["Bool","Int","Real"]
+    "Bool":["Bool","Int","Real"],
+    "array:Int":["array:Int"]
 }
 
 
@@ -60,6 +64,55 @@ def assignment(inputs,token,mod):
         raise ValueError("ERROR: variable type {} does not match right side type {}.\n".format(left[1],inputs[0][1]))
     out = ["store {} {}, {}* {}".format(types[inputs[0][1]],inputs[0][0],types[left[1]],left[0])]
     return "", "None", left[2] + out
+
+def arrayAssignment(inputs,token,mod):
+    out = []
+    inputs = inputs[0][0]
+    dtype = inputs[0][1]
+    ctype = types[dtype]
+    mod.ensureDeclared("malloc","declare i8* @malloc(i32)")
+    mod.ensureDeclared("free","declare void @free(i8*)")
+    name = token.data
+    if not re.match(r"[a-zA-Z_]\w*",name):
+        raise ValueError("ERROR: Cannot assign to invalid variable name {}.".format(name))
+    left = mod.getVariable(name)
+    if left is None:
+        left = mod.newVariable(name,"array:"+inputs[0][1])
+    else:
+        tempFree = mod.newRegister()
+        tempFree2 = mod.newRegister()
+        out += ["{} = load {}*, {}** {}".format(tempFree, ctype, ctype, left[0])]
+        out += ["{} = bitcast {}* {} to i8*".format(tempFree2, types[dtype],tempFree)]
+        out += ["call void @free(i8* {})".format(tempFree2)]
+    temp1 = mod.newRegister()
+    temp2 = mod.newRegister()
+    out += ["{} = call i8* @malloc(i32 {})".format(temp1, bitsizes[dtype]*len(inputs))]
+    out += ["{} = bitcast i8* {} to {}*".format(temp2, temp1,types[dtype])]
+    out += ["store {}* {}, {}** {}".format(types[dtype],temp2,types[dtype],left[0])]
+    for i, val in enumerate(inputs):
+        addr = mod.newRegister()
+        out += ["{} = getelementptr {}, {}* {}, i32 {}".format(addr, ctype, ctype, temp2, i)]
+        out += ["store {} {}, {}* {}".format(ctype,val[0],ctype,addr)]
+    return "", "None", out
+
+
+def createArray(inputs, token, mod):
+    dtype = inputs[0][1]
+    return inputs, "array:"+dtype, []
+
+
+def indexArray(inputs, token, mod):
+    varAddr, varType, _ = mod.getVariable(token.data[0])
+    if varType[6:] != inputs[0][1]:
+        raise ValueError("INTERNAL ERROR: Expected array subtype {} and subtype found in memory {} don't match.".format(inputs[0][1],varType[6:]))
+    ctype = types[inputs[0][1]]
+    arrPtr = mod.newRegister()
+    out = ["{} = load {}*, {}** {}".format(arrPtr,ctype, ctype, varAddr)]
+    subPtr = mod.newRegister()
+    out += ["{} = getelementptr {}, {}* {}, i32 {}".format(subPtr,ctype, ctype, arrPtr, inputs[0][0])]
+    addr = mod.newRegister()
+    out += ["{} = load {}, {}* {}".format(addr,ctype, ctype, subPtr)]
+    return addr, inputs[0][1], out
 
 
 def printStatement(inputs,token,mod):

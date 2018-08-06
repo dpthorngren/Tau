@@ -38,7 +38,7 @@ def Int fibb(Int lim):
 fibb(100)
 '''
 
-jit = scimple.ScimpleJIT(True,True,False,True)
+jit = scimple.ScimpleJIT(True,False,False,True)
 
 class ScimpleTester(unittest.TestCase):
     def testParenHandling(self):
@@ -131,6 +131,13 @@ class ScimpleTester(unittest.TestCase):
             jit.runCommand("x4 = sin(2.43) 23432")
         with self.assertRaises(ValueError):
             jit.runCommand("print 3 x4 2")
+
+
+    def testArrays(self):
+        jit.runCommand("arr = [1,2,3,4,5]")
+        self.assertEqual(jit.runCommand("5-arr[3]"),1)
+        jit.runCommand("arr = [5,4,3]")
+        self.assertEqual(jit.runCommand("arr[1]-5"),-1)
 
 
 if __name__ == "__main__":

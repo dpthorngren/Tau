@@ -45,15 +45,23 @@ class ScimpleModule():
             raise ValueError("ERROR: {} is not a valid variable name.".format(name))
         if name in self.localVars.keys() or name in ScimpleModule.globalVars.keys():
             raise ValueError("ERROR: variable {} is already defined.".format(name))
+        out = []
         if self.isGlobal:
+            if dtype.startswith("array:"):
+                subtype = dtype[6:]
+                self.ensureDeclared(name,'@usr_{} = global {}* null'.format(name,types[subtype]))
+            else:
+                self.ensureDeclared(name,'@usr_{} = global {} {}'.format(name,types[dtype],globalInit[dtype]))
             ScimpleModule.globalVars[name] = dtype
-            self.ensureDeclared(name,'@usr_{} = global {} {}'.format(name,types[dtype],globalInit[dtype]))
             name = "@usr_{}".format(name)
-            out = []
         else:
             self.localVars[name] = dtype
             name = "%usr_{}".format(name)
-            out = ["{} = alloca {}".format(name,types[dtype])]
+            if dtype.startswith("array"):
+                subtype = dtype[6:]
+                out += ["{} = alloca {}*".format(name,types[dtype])]
+            else:
+                out += ["{} = alloca {}".format(name,types[dtype])]
         return name, dtype, out
 
 
@@ -61,7 +69,11 @@ class ScimpleModule():
         '''Checks if a variable exists, and returns the name and dtype if so.'''
         if name in ScimpleModule.globalVars.keys():
             dtype = ScimpleModule.globalVars[name]
-            self.ensureDeclared(name,'@usr_{} = external global {}'.format(name,types[dtype]))
+            if dtype.startswith("array:"):
+                subtype = dtype[6:]
+                self.ensureDeclared(name,'@usr_{} = external global {}*'.format(name,types[subtype]))
+            else:
+                self.ensureDeclared(name,'@usr_{} = external global {}'.format(name,types[dtype]))
             return "@usr_{}".format(name), ScimpleModule.globalVars[name], []
         elif name in self.localVars.keys():
             return "%usr_{}".format(name), self.localVars[name], []
