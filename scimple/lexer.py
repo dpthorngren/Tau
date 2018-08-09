@@ -4,6 +4,7 @@ import sys
 import os
 import re
 from ast import *
+from dtypes import *
 
 # Pygments settings
 example_style = ptk.styles.style_from_dict({
@@ -149,19 +150,19 @@ def lex(code,debugLexer=False):
         # Identify real literals
         match = re.match(r"\d*\.\d*",unprocessed)
         if match:
-            tokens.append(Token("literal",["Real",float(match.group())]))
+            tokens.append(Token("literal",[Real,float(match.group())]))
             unprocessed = unprocessed[len(match.group()):].strip()
             continue
         # Identify int literals
         match = re.match(r"\d+",unprocessed)
         if match:
-            tokens.append(Token("literal",["Int",int(match.group())]))
+            tokens.append(Token("literal",[Int,int(match.group())]))
             unprocessed = unprocessed[len(match.group()):].strip()
             continue
         # Identify bool literals
         match = re.match(r"(True|False)",unprocessed)
         if match:
-            tokens.append(Token("literal",["Bool",match.group().lower()]))
+            tokens.append(Token("literal",[Bool,match.group().lower()]))
             unprocessed = unprocessed[len(match.group()):].strip()
             continue
         # Identify names and types

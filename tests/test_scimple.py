@@ -88,7 +88,7 @@ class ScimpleTester(unittest.TestCase):
             self.assertEqual(pythonResults,scimpleResults)
 
 
-    def test_assignment(self):
+    def testAssignment(self):
         jit.runCommand("i = 23.")
         scimpleResults = jit.runCommand("i")
         self.assertEqual(scimpleResults,23.)
@@ -110,7 +110,7 @@ class ScimpleTester(unittest.TestCase):
         self.assertEqual(scimpleResults,1)
 
 
-    def test_ifWhile(self):
+    def testIfWhile(self):
         scimpleResults = jit.runCommand(snippet1)
         self.assertEqual(scimpleResults,18)
 
@@ -138,6 +138,10 @@ class ScimpleTester(unittest.TestCase):
         self.assertEqual(jit.runCommand("5-arr[3]"),1)
         jit.runCommand("arr = [5,4,3]")
         self.assertEqual(jit.runCommand("arr[1]-5"),-1)
+        jit.runCommand("arrf = [1.,2,3,4,5]")
+        self.assertEqual(jit.runCommand("5-arr[3]"),1.)
+        jit.runCommand("arrf = [5.,4,3]")
+        self.assertEqual(jit.runCommand("arr[1]-5"),-1.)
 
 
 if __name__ == "__main__":

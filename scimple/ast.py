@@ -41,7 +41,7 @@ class ASTNode():
                 # Known, user-defined function
                 self.dtype, args = self.module.userFunctions[caller]
                 self.children = [ASTNode(t,self.module).castTo(a[0]) for t, a in zip(splitArguments(data),args)]
-            elif caller in types.keys():
+            elif caller in baseTypes:
                 # Explicit type cast
                 self.children = [ASTNode(data,self.module).castTo(caller,True)]
             else:
@@ -56,7 +56,7 @@ class ASTNode():
             self.dtype = self.children[0].dtype
         elif self.token.name == "name":
             assertEmpty(leftTokens,rightTokens)
-            _, self.dtype, _ = self.module.getVariable(self.token.data,True)
+            self.dtype = type(self.module.getVariable(self.token.data,True))
         elif self.token.name == "indexing":
             assertEmpty(leftTokens,rightTokens)
             self.children = [ASTNode(self.token.data[1],self.module)]
@@ -65,7 +65,7 @@ class ASTNode():
             self.children = [ASTNode(t,self.module) for t in splitArguments(self.token.data)]
             self.dtype = self.children[0].dtype
             self.children = [i.castTo(self.dtype) for i in self.children]
-            self.dtype = "array:" + self.dtype
+            self.dtype = Array(self.dtype)
         else:
             raise ValueError("ERROR: Can't parse:'{}'.\n".format(self.token.name))
         # Resolve the types given the child types and available builtins.
@@ -90,7 +90,7 @@ class ASTNode():
                 continue
             try:
                 for a, ca in zip(argTypes,candidateArgs):
-                    candidateCost += castingRules[a].index(ca)
+                    candidateCost += a.casting.index(ca)
             except ValueError:
                 continue
             if candidateCost < cost:
@@ -98,25 +98,24 @@ class ASTNode():
             elif candidateCost == cost:
                 raise ValueError("ERROR: Tie for overload resolution of token '{}' with types {}".format(smeelf.token.name,argTypes))
         if best is None:
-            raise ValueError("No valid candidates for token '{}' with types {}".format(name,argTypes))
-        # We've found the best candidate, record  findings to self
+            raise ValueError("No valid candidates for token '{}' with types {}".format(name,[i.name for i in argTypes]))
+        # We've found the best candidate, record findings to self
         self.evaluator, self.dtype = catalog[name][best]
-        self.children = [i.castTo(j) for i, j in zip(self.children,bestArgs)]
+        self.children = [i.castTo(getType(j)) for i, j in zip(self.children,bestArgs)]
 
 
     def evaluate(self):
         m = self.module
         inputs = [i.evaluate() for i in self.children]
-        result = self.evaluator(inputs,self.token,self.module)
-        return result[0], result[1]
+        return self.evaluator(inputs,self.token,self.module)
 
 
     def castTo(self,dtype,force=False):
         if self.dtype == dtype:
             return self
         try:
-            c = conversions[self.dtype+dtype]
-        except ValueError:
+            c = self.dtype.conversions[dtype.name]
+        except KeyError:
             raise ValueError("ERROR: Cannot convert type {} to type {}.".format(self.dtype,dtype))
         if c[0] and not force:
             raise ValueError("ERROR: Won't automatically convert type {} to type {}.".format(self.dtype,dtype))
@@ -172,15 +171,17 @@ ASTNode.builtinCatalog = {
     'array':createArray,
     'indexing':indexArray,
     # Typed builtins
-    '=':{i:[assignment,"None"] for i in ['Real','Int','Bool']},
-    '**':{"Real Real":[power,"Real"]},
-    '/':{"Real Real":[simpleBinary,"Real"]},
-    '//':{"Int Int":[simpleBinary,"Int"]},
+    '=':{i:[assignment,None] for i in ['Real','Int','Bool']},
+    '**':{"Real Real":[power,Real]},
+    '/':{"Real Real":[simpleBinary,Real]},
+    '//':{"Int Int":[simpleBinary,Int]},
 }
-ASTNode.builtinCatalog['=']['array:Int'] = [arrayAssignment,"None"]
+# TODO: Figure out dynamically
+ASTNode.builtinCatalog['=']['Array:Int'] = [arrayAssignment,None]
+ASTNode.builtinCatalog['=']['Array:Real'] = [arrayAssignment,None]
 for t in ['and','or','xor']:
-    ASTNode.builtinCatalog[t] = {'Bool Bool':[boolOperators,'Bool']}
+    ASTNode.builtinCatalog[t] = {'Bool Bool':[boolOperators,Bool]}
 for t in ['<=','>=','<','>','!=','==']:
-    ASTNode.builtinCatalog[t] = {ty+' '+ty:[comparison,'Bool'] for ty in ["Real","Int","Bool"]}
+    ASTNode.builtinCatalog[t] = {ty+' '+ty:[comparison,Bool] for ty in ["Real","Int","Bool"]}
 for t in ['-','+','*','%']:
-    ASTNode.builtinCatalog[t] = {ty+' '+ty:[simpleBinary,ty] for ty in ["Real","Int","Bool"]}
+    ASTNode.builtinCatalog[t] = {ty+' '+ty:[simpleBinary,getType(ty)] for ty in ["Real","Int","Bool"]}

@@ -48,37 +48,26 @@ class ScimpleModule():
             raise ValueError("ERROR: variable {} is already defined.".format(name))
         out = []
         if self.isGlobal:
-            if dtype.startswith("array:"):
-                subtype = dtype[6:]
-                self.ensureDeclared(name,'@usr_{} = global {}* null'.format(name,types[subtype]))
-            else:
-                self.ensureDeclared(name,'@usr_{} = global {} {}'.format(name,types[dtype],globalInit[dtype]))
+            self.ensureDeclared(name,'@usr_{} = global {} {}'.format(name,dtype.irname,dtype.initStr))
             ScimpleModule.globalVars[name] = dtype
             name = "@usr_{}".format(name)
         else:
             self.localVars[name] = dtype
             name = "%usr_{}".format(name)
-            if dtype.startswith("array"):
-                subtype = dtype[6:]
-                out += ["{} = alloca {}*".format(name,types[dtype])]
-            else:
-                out += ["{} = alloca {}".format(name,types[dtype])]
+            out += ["{} = alloca {}".format(name,dtype.irname)]
         self.out += out
-        return name, dtype, []
+        return dtype(name)
 
 
     def getVariable(self, name, throw=False):
         '''Checks if a variable exists, and returns the name and dtype if so.'''
         if name in ScimpleModule.globalVars.keys():
             dtype = ScimpleModule.globalVars[name]
-            if dtype.startswith("array:"):
-                subtype = dtype[6:]
-                self.ensureDeclared(name,'@usr_{} = external global {}*'.format(name,types[subtype]))
-            else:
-                self.ensureDeclared(name,'@usr_{} = external global {}'.format(name,types[dtype]))
-            return "@usr_{}".format(name), ScimpleModule.globalVars[name], []
+            self.ensureDeclared(name,'@usr_{} = external global {}'.format(name,dtype.irname))
+            return dtype("@usr_{}".format(name))
         elif name in self.localVars.keys():
-            return "%usr_{}".format(name), self.localVars[name], []
+            dtype = self.localVars[name]
+            return dtype("%usr_{}".format(name))
         elif throw:
             raise ValueError("ERROR: variable {} has not been declared.".format(name))
         return None
@@ -103,8 +92,12 @@ class ScimpleModule():
     def callIfNeeded(self,jit):
         '''If the last JIT compilation created an anonymous function, run it.'''
         if self.lastAnonymous:
-            ret, retType, name = self.lastAnonymous
-            return (CFUNCTYPE(ctypemap[retType])(jit.get_function_address(name)))()
+            ret, name = self.lastAnonymous
+            if ret is not None and ret.ctype is not None:
+                return (CFUNCTYPE(ret.ctype)(jit.get_function_address(name)))()
+            else:
+                (CFUNCTYPE(c_int)(jit.get_function_address(name)))()
+                return
         return
 
 
@@ -118,13 +111,19 @@ class ScimpleModule():
             if self.replMode:
                 mainName = self.newAnonymousFunction()
                 if self.lastOutput:
-                    ret, retType = self.lastOutput
+                    ret = self.lastOutput
                 else:
-                    ret, retType = "", "None"
-                self.lastAnonymous = ret, retType, mainName
-            out += ["define {} @{}()".format(types[retType], mainName) + "{"]
-            out += ["entry:"]
-            out += ["    "*(':' not in l)+l for l in self.main]
-            out += ["    ret {} {}".format(types[retType],ret)+'\n}']
+                    ret = None
+                self.lastAnonymous = ret, mainName
+            if ret is not None:
+                out += ["define {} @{}()".format(ret.irname, mainName) + "{"]
+                out += ["entry:"]
+                out += ["    "*(':' not in l)+l for l in self.main]
+                out += ["    ret {} {}".format(ret.irname,ret.addr)+'\n}']
+            else:
+                out += ["define void @{}()".format(mainName) + "{"]
+                out += ["entry:"]
+                out += ["    "*(':' not in l)+l for l in self.main]
+                out += ["    ret void\n}"]
             self.lastOutput = None
         return '\n'.join(out) + '\n'
