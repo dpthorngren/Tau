@@ -108,7 +108,12 @@ def compileFile(filename,outputFile="a.out",debugIR=False,debugAST=False,debugLe
 
 def parseTopLevel(mod,source,forJIT=False):
     # Classify the block
-    blockHead = lex(source.peek(),False)
+    try:
+        blockHead = lex(source.peek(),False)
+    except:
+        # Clear the bad line from the buffer
+        source.getLine()
+        raise
     # if re.match("^\s*def .*(.*):\s*",blockHead): # Function declaration
     if blockHead[0].name == 'def':
         # Determine function name and return type

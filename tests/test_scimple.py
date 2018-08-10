@@ -115,7 +115,19 @@ class ScimpleTester(unittest.TestCase):
         self.assertEqual(scimpleResults,18)
 
 
-    def test_functions(self):
+    def testUnary(self):
+        self.assertEqual(jit.runCommand("-3"),-3)
+        self.assertEqual(jit.runCommand("-3."),-3.)
+        self.assertEqual(jit.runCommand("2.*-3."),-6.)
+        self.assertEqual(jit.runCommand("2.*+3."),6.)
+        self.assertEqual(jit.runCommand("2*-3."),-6.)
+        self.assertEqual(jit.runCommand("x4 = 2."),None)
+        self.assertEqual(jit.runCommand("-x4**-2 * 2."),.5)
+        self.assertEqual(jit.runCommand("-sin(-2.)"),-sin(-2))
+        self.assertEqual(jit.runCommand("-sin(+4.4)"),-sin(4.4))
+
+
+    def testFunctions(self):
         results = jit.runCommand(snippet2)
         self.assertEqual(results,0.861607742935979)
         results = jit.runCommand(snippet3)

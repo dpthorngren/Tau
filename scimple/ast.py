@@ -20,9 +20,11 @@ class ASTNode():
             sys.stderr.write("AST: "+self.token.name+', '+str(self.token.data)+"\n")
         # Now, construct the node according to the operator found
         if self.token.name == "print":
+            assertEmpty(leftTokens)
             self.children = [ASTNode(rightTokens,self.module)]
         elif self.token.name in ['=','+=','-=','/=','//=','**=','*=','%=']:
             # Assignment operator and variants
+            assertEmpty(leftTokens)
             if self.token.name != '=':
                 rightTokens = [Token('name',self.token.data),Token(self.token.name[:-1]),Token('()',rightTokens)]
                 self.token.name = '='
@@ -31,6 +33,10 @@ class ASTNode():
         elif self.token.name in ['and','or','xor','-','+','%','*','//','/','**','<=','>=','<','>','!=','==']:
             # Binary operators!
             self.children = [ASTNode(t,self.module) for t in [leftTokens,rightTokens]]
+        elif self.token.name in ["unary +", "unary -"]:
+            assertEmpty(leftTokens)
+            self.children = [ASTNode(rightTokens,self.module)]
+            self.dtype = self.children[0].dtype
         elif self.token.name == "literal":
             assertEmpty(leftTokens,rightTokens)
             self.dtype = self.token.data[0]
@@ -58,9 +64,8 @@ class ASTNode():
             assertEmpty(leftTokens,rightTokens)
             self.dtype = type(self.module.getVariable(self.token.data,True))
         elif self.token.name == "indexing":
-            assertEmpty(leftTokens,rightTokens)
-            self.children = [ASTNode(self.token.data[1],self.module)]
-            self.dtype = self.children[0].dtype
+            assertEmpty(rightTokens)
+            self.children = [ASTNode(i,self.module) for i in [leftTokens,self.token.data]]
         elif self.token.name == "array":
             self.children = [ASTNode(t,self.module) for t in splitArguments(self.token.data)]
             self.dtype = self.children[0].dtype
@@ -127,9 +132,9 @@ class ASTNode():
         return converterNode
 
 
-def assertEmpty(left,right):
+def assertEmpty(left,right=[]):
     if left or right:
-        raise ValueError("ERROR: Unexpected tokens.")
+        raise ValueError("ERROR: Unexpected tokens {}",left+right)
 
 
 def splitArguments(tokens):
@@ -147,18 +152,6 @@ def splitArguments(tokens):
     return output
 
 
-def findMatching(s,start=0,left='(',right=')'):
-    level = 0
-    for i, c in enumerate(s[start:]):
-        if c == left:
-            level += 1
-        elif c == right:
-            level -= 1
-            if level == 0:
-                return i+start
-    raise ValueError("More {} than {}".format(left,right))
-
-
 # This catalog tells the AST what functions to call for a given token.
 # For type-dependent builtins, it also says the accepted and return types.
 ASTNode.builtinCatalog = {
@@ -169,8 +162,10 @@ ASTNode.builtinCatalog = {
     "()":parentheses,
     'print':printStatement,
     'array':createArray,
-    'indexing':indexArray,
     # Typed builtins
+    'indexing':{"Array:{} Int".format(i):[indexArray,getType(i)] for i in ["Real","Int"]},
+    'unary -':{i:[unaryPlusMinus,getType(i)] for i in ['Real','Int']},
+    'unary +':{i:[unaryPlusMinus,getType(i)] for i in ['Real','Int']},
     '=':{i:[assignment,None] for i in ['Real','Int','Bool']},
     '**':{"Real Real":[power,Real]},
     '/':{"Real Real":[simpleBinary,Real]},

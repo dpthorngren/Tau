@@ -72,7 +72,9 @@ class InputBuffer():
 class Token():
     precedence = ['print','=','+=','-=','/=','//=','*=','**=','%=','and','or',
                   'xor','<=','>=','<','>','!=','==', '-','+','%','*','//','/',
-                  '**','function','array','()','indexing','literal','name','type']
+                  '**','unary +','unary -','function','array','()','indexing',
+                  'literal','name','type']
+    valueTokens = ['function','array','()','indexing','literal','name','type']
 
     def __init__(self,name,data=None):
         self.name = name
@@ -82,16 +84,16 @@ class Token():
         return Token.precedence.index(self.name)
 
 
-
 def lex(code,debugLexer=False):
     tokens = []
     unprocessed = code.strip()
     indentation = len(code.rstrip()) - len(unprocessed)
     while unprocessed:
+        lastWasValue = tokens and tokens[-1].name in Token.valueTokens
         # Identify block-starting keywords
         match = re.match(r"(def|for|while|if)\b",unprocessed)
         if match:
-            if unprocessed != code.strip():
+            if tokens:
                 raise ValueError("ERROR: Keyword {} must start the line.".format(match.group()))
             tokens.append(Token(match.group()))
             unprocessed = unprocessed[len(match.group()):-1].strip()
@@ -99,7 +101,7 @@ def lex(code,debugLexer=False):
         # Identify line-starting keywords
         match = re.match(r"(print|end)\b",unprocessed)
         if match:
-            if unprocessed != code.strip():
+            if tokens:
                 raise ValueError("ERROR: Keyword {} must start the line.".format(match.group()))
             tokens.append(Token(match.group()))
             unprocessed = unprocessed[len(match.group()):].strip()
@@ -109,12 +111,23 @@ def lex(code,debugLexer=False):
         if match:
             tokens.append(Token(match.group()))
             unprocessed = unprocessed[len(match.group()):].strip()
+            assertLastValue(tokens)
+            continue
+        # Identify possibly unary symbols
+        match = re.match(r'(\+|-)(?!\*?/?=)',unprocessed)
+        if match:
+            if lastWasValue: # Binary operator
+                tokens.append(Token(match.group()))
+            else: # Unary operator
+                tokens.append(Token("unary "+match.group()))
+            unprocessed = unprocessed[len(match.group()):].strip()
             continue
         # Identify basic symbols
-        match = re.match(r'(,|\+|-|\*\*?|%|//?|<=?|>=?|==)(?!\*?/?=)',unprocessed)
+        match = re.match(r'(,|\*\*?|%|//?|<=?|>=?|==)(?!\*?/?=)',unprocessed)
         if match:
             tokens.append(Token(match.group()))
             unprocessed = unprocessed[len(match.group()):].strip()
+            assertLastValue(tokens)
             continue
         # Identify assignment operation
         match = re.match(r'((\+|-|//?|\*\*?|%)?=)',unprocessed)
@@ -140,9 +153,7 @@ def lex(code,debugLexer=False):
             right = findMatching(unprocessed,left='[',right=']')
             if tokens and tokens[-1].name == "name":
                 # This is an indexing operation
-                # TODO handle indexing of anonymous objects e.g. [1,2,3,5][2]
-                caller = tokens.pop(-1).data
-                tokens.append(Token("indexing",[caller,lex(unprocessed[1:right])]))
+                tokens.append(Token("indexing",lex(unprocessed[1:right])))
             else:
                 tokens.append(Token("array",lex(unprocessed[1:right])))
             unprocessed = unprocessed[right+1:].strip()
@@ -178,6 +189,18 @@ def lex(code,debugLexer=False):
     if debugLexer:
         sys.stderr.write("LEXER: "+code+" ===> "+str([t.name for t in tokens])+'\n')
     return tokens
+
+
+def assertLastValue(tokens):
+    '''Checks if the second most recent token was a value type and raises an error
+    if that isn't the case.  Value types are things like 3 and (2343**x) that
+    can be the left side of a binary operation, for example, and are listed in
+    Token.valueTypes.'''
+    if len(tokens) <= 1:
+        raise ValueError("ERROR: Token '{}' cannot start a line, it needs a value to its left.".format(tokens[0].name))
+    if tokens[-2].name not in Token.valueTokens:
+        raise ValueError("ERROR: token '{}' expected a value token to its left and instead found '{}'.".format(tokens[-1].name,tokens[-2].name))
+    return
 
 
 def findMatching(s,start=0,left='(',right=')'):

@@ -75,35 +75,29 @@ def arrayAssignment(inputs,token,mod):
 
 
 def createArray(inputs, token, mod):
+    # TODO: Better memory management to allow for proper anonymous arrays
     return Array(type(inputs[0]))(inputs)
 
 
 def indexArray(inputs, token, mod):
-    var = mod.getVariable(token.data[0],True)
-    result = var.subtype(mod.newRegister())
-    arrPtr = mod.newRegister()
+    result = inputs[0].subtype(mod.newRegister())
     elemPtr = mod.newRegister()
-    mod.out += ["{} = load {}*, {}** {}".format(arrPtr,result.irname, result.irname, var.addr)]
-    mod.out += ["{} = getelementptr {}, {}* {}, i32 {}".format(elemPtr,result.irname, result.irname, arrPtr, inputs[0].addr)]
+    mod.out += ["{} = getelementptr {}, {}* {}, i32 {}".format(elemPtr,result.irname, result.irname, inputs[0].addr, inputs[1].addr)]
     mod.out += ["{} = load {}, {}* {}".format(result.addr,result.irname, result.irname, elemPtr)]
     return result
 
 
 def printStatement(inputs,token,mod):
-    print inputs.name
     mod.ensureDeclared("printf",'declare i32 @printf(i8* nocapture readonly, ...)')
     if isinstance(inputs[0],Real):
-        print "Real"
         mod.ensureDeclared("printFloat",'@printFloat = external global [4 x i8]')
-        mod.out = ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printFloat, i32 0, i32 0), double {})".format(inputs[0].addr)]
+        mod.out += ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printFloat, i32 0, i32 0), double {})".format(inputs[0].addr)]
     elif isinstance(inputs[0],Int):
-        print "Int"
         mod.ensureDeclared("printInt",'@printInt = external global [4 x i8]')
-        mod.out = ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i32 {})".format(inputs[0].addr)]
+        mod.out += ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i32 {})".format(inputs[0].addr)]
     elif isinstance(inputs[0],Bool):
-        print "Bool"
         mod.ensureDeclared("printInt",'@printInt = external global [4 x i8]')
-        mod.out = ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i1 {})".format(inputs[0].addr)]
+        mod.out += ["call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @printInt, i32 0, i32 0), i1 {})".format(inputs[0].addr)]
     return None
 
 
@@ -123,6 +117,20 @@ def power(inputs, token, mod):
     result = Real(mod.newRegister())
     mod.ensureDeclared("llvm.pow.f64","declare double @llvm.pow.f64(double, double)")
     mod.out += ["{} = call double @llvm.pow.f64(double {}, double {})".format(result.addr, inputs[0].addr, inputs[1].addr)]
+    return result
+
+
+def unaryPlusMinus(inputs, token, mod):
+    if token.name == "unary +":
+        return inputs[0]
+    result = type(inputs[0])(mod.newRegister())
+    if isinstance(inputs[0],Real):
+        function = 'fmul'
+        right = "-1."
+    else:
+        function = 'mul'
+        right = "-1"
+    mod.out += ["{} = {} {} {}, {}".format(result.addr,function,inputs[0].irname,inputs[0].addr,right)]
     return result
 
 

@@ -91,14 +91,12 @@ class ScimpleModule():
 
     def callIfNeeded(self,jit):
         '''If the last JIT compilation created an anonymous function, run it.'''
-        if self.lastAnonymous:
-            ret, name = self.lastAnonymous
-            if ret is not None and ret.ctype is not None:
-                return (CFUNCTYPE(ret.ctype)(jit.get_function_address(name)))()
-            else:
-                (CFUNCTYPE(c_int)(jit.get_function_address(name)))()
-                return
-        return
+        ret, name = self.lastAnonymous
+        if ret is not None and ret.ctype is not None:
+            return (CFUNCTYPE(ret.ctype)(jit.get_function_address(name)))()
+        else:
+            (CFUNCTYPE(c_int)(jit.get_function_address(name)))()
+            return
 
 
     def __str__(self):
