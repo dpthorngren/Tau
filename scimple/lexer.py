@@ -72,7 +72,7 @@ class InputBuffer():
 class Token():
     precedence = ['print','=','+=','-=','/=','//=','*=','**=','%=','and','or',
                   'xor','<=','>=','<','>','!=','==', '-','+','%','*','//','/',
-                  '**','unary +','unary -','function','array','()','indexing',
+                  '**','unary +','unary -','indexing','function','array','()',
                   'literal','name','type']
     valueTokens = ['function','array','()','indexing','literal','name','type']
 
@@ -151,8 +151,7 @@ def lex(code,debugLexer=False):
         # Identify array literals and indexing operations
         if unprocessed.startswith("["):
             right = findMatching(unprocessed,left='[',right=']')
-            if tokens and tokens[-1].name == "name":
-                # This is an indexing operation
+            if lastWasValue: # This is an indexing operation
                 tokens.append(Token("indexing",lex(unprocessed[1:right])))
             else:
                 tokens.append(Token("array",lex(unprocessed[1:right])))

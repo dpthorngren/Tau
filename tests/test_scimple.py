@@ -151,9 +151,10 @@ class ScimpleTester(unittest.TestCase):
         jit.runCommand("arr = [5,4,3]")
         self.assertEqual(jit.runCommand("arr[1]-5"),-1)
         jit.runCommand("arrf = [1.,2,3,4,5]")
-        self.assertEqual(jit.runCommand("5-arr[3]"),1.)
+        self.assertEqual(jit.runCommand("5-arrf[3]"),1.)
         jit.runCommand("arrf = [5.,4,3]")
-        self.assertEqual(jit.runCommand("arr[1]-5"),-1.)
+        self.assertEqual(jit.runCommand("arrf[1]-5"),-1.)
+        self.assertEqual(jit.runCommand("[4.,3.,6.][1]-5"),-2.)
 
 
 if __name__ == "__main__":

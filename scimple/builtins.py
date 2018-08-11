@@ -45,38 +45,15 @@ def assignment(inputs,token,mod):
     mod.out += ["store {} {}, {}* {}".format(inputs[0].irname,inputs[0].addr,var.irname,var.addr)]
     return None
 
-def arrayAssignment(inputs,token,mod):
-    inputs = inputs[0]
-    sub = inputs.subtype
-    name = token.data
-    mod.ensureDeclared("malloc","declare i8* @malloc(i32)")
-    mod.ensureDeclared("free","declare void @free(i8*)")
-    if not re.match(r"[a-zA-Z_]\w*",name):
-        raise ValueError("ERROR: Cannot assign to invalid variable name {}.".format(name))
-    left = mod.getVariable(name)
-    if left is None:
-        left = mod.newVariable(name,type(inputs))
-    else:
-        tempFree = mod.newRegister()
-        tempFree2 = mod.newRegister()
-        mod.out += ["{} = load {}*, {}** {}".format(tempFree, sub.irname, sub.irname, left.addr)]
-        mod.out += ["{} = bitcast {}* {} to i8*".format(tempFree2, sub.irname,tempFree)]
-        mod.out += ["call void @free(i8* {})".format(tempFree2)]
-    temp1 = mod.newRegister()
-    temp2 = mod.newRegister()
-    mod.out += ["{} = call i8* @malloc(i32 {})".format(temp1, sub.size*len(inputs.addr))]
-    mod.out += ["{} = bitcast i8* {} to {}*".format(temp2, temp1,sub.irname)]
-    mod.out += ["store {}* {}, {}** {}".format(sub.irname,temp2,sub.irname,left.addr)]
-    for i, val in enumerate(inputs.addr):
-        addr = mod.newRegister()
-        mod.out += ["{} = getelementptr {}, {}* {}, i32 {}".format(addr, sub.irname, sub.irname, temp2, i)]
-        mod.out += ["store {} {}, {}* {}".format(sub.irname,val.addr,sub.irname,addr)]
-    return None
-
 
 def createArray(inputs, token, mod):
-    # TODO: Better memory management to allow for proper anonymous arrays
-    return Array(type(inputs[0]))(inputs)
+    sub = type(inputs[0])
+    addr = mod.allocate(type(inputs[0]),len(inputs))
+    for i, val in enumerate(inputs):
+        temp = mod.newRegister()
+        mod.out += ["{} = getelementptr {}, {}* {}, i32 {}".format(temp, sub.irname, sub.irname, addr, i)]
+        mod.out += ["store {} {}, {}* {}".format(sub.irname,val.addr,sub.irname,temp)]
+    return Array(type(inputs[0]))(addr)
 
 
 def indexArray(inputs, token, mod):

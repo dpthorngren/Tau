@@ -162,18 +162,15 @@ ASTNode.builtinCatalog = {
     "()":parentheses,
     'print':printStatement,
     'array':createArray,
+    '=':assignment,
     # Typed builtins
     'indexing':{"Array:{} Int".format(i):[indexArray,getType(i)] for i in ["Real","Int"]},
     'unary -':{i:[unaryPlusMinus,getType(i)] for i in ['Real','Int']},
     'unary +':{i:[unaryPlusMinus,getType(i)] for i in ['Real','Int']},
-    '=':{i:[assignment,None] for i in ['Real','Int','Bool']},
     '**':{"Real Real":[power,Real]},
     '/':{"Real Real":[simpleBinary,Real]},
     '//':{"Int Int":[simpleBinary,Int]},
 }
-# TODO: Figure out dynamically
-ASTNode.builtinCatalog['=']['Array:Int'] = [arrayAssignment,None]
-ASTNode.builtinCatalog['=']['Array:Real'] = [arrayAssignment,None]
 for t in ['and','or','xor']:
     ASTNode.builtinCatalog[t] = {'Bool Bool':[boolOperators,Bool]}
 for t in ['<=','>=','<','>','!=','==']:

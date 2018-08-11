@@ -39,6 +39,19 @@ class ScimpleModule():
         return
 
 
+    def allocate(self,dtype, count=1):
+        '''Allocates memory of the requested type and count and returns a
+        pointer of the appropriate type.  This will be freed when
+        self.endScope is called.'''
+        self.ensureDeclared("malloc","declare i8* @malloc(i32)")
+        self.ensureDeclared("free","declare void @free(i8*)")
+        beforeCast = self.newRegister()
+        result = self.newRegister()
+        self.out += ["{} = call i8* @malloc(i32 {})".format(beforeCast, dtype.size*count)]
+        self.out += ["{} = bitcast i8* {} to {}*".format(result, beforeCast, dtype.irname)]
+        return result
+
+
     def newVariable(self, name, dtype):
         '''Checks that a variable has a valid name and isn't already in use,
            then creates the variable.'''
