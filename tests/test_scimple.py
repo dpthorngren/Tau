@@ -145,6 +145,10 @@ class ScimpleTester(unittest.TestCase):
             jit.runCommand("print 3 x4 2")
 
 
+    def testArrayGeneration(self):
+        self.assertEqual(jit.runCommand("Int[30]"),None)
+
+
     def testArrays(self):
         jit.runCommand("arr = [1,2,3,4,5]")
         self.assertEqual(jit.runCommand("5-arr[3]"),1)

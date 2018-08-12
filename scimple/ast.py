@@ -73,6 +73,9 @@ class ASTNode():
             assertEmpty(rightTokens)
             self.children = [ASTNode(i,self.module) for i in [leftTokens,self.token.data]]
         elif self.token.name == "array":
+            assertEmpty(leftTokens,rightTokens)
+            self.children = [ASTNode(self.token.data[1],self.module)]
+        elif self.token.name == "literalArray":
             self.children = [ASTNode(t,self.module) for t in splitArguments(self.token.data)]
             self.dtype = self.children[0].dtype
             self.children = [i.castTo(self.dtype) for i in self.children]
@@ -173,9 +176,10 @@ ASTNode.builtinCatalog = {
     'name':name,
     "()":parentheses,
     'print':printStatement,
-    'array':createArray,
+    'literalArray':literalArray,
     '=':assignment,
     'free':freeMemory,
+    'array':createArray,
     # Typed builtins name:{"Arg1Type Args2Type":[function,retType]}
     'indexing':{"Array:{} Int".format(i):[indexArray,getType(i)] for i in ["Real","Int"]},
     'unary -':{i:[unaryPlusMinus,getType(i)] for i in ['Real','Int']},

@@ -72,9 +72,10 @@ class InputBuffer():
 class Token():
     precedence = ['print','=','+=','-=','/=','//=','*=','**=','%=','and','or',
                   'xor','<=','>=','<','>','!=','==', '-','+','%','*','//','/',
-                  '**','unary +','unary -','indexing','function','free','array','()',
-                  'literal','name','type']
-    valueTokens = ['function','array','()','indexing','literal','name','type']
+                  '**','unary +','unary -','indexing','function','free','array',
+                  'literalArray','()', 'literal','name','type']
+    valueTokens = ['function','array','()','indexing','literal','name','type',
+                   'literalArray']
 
     def __init__(self,name,data=None):
         self.name = name
@@ -155,10 +156,14 @@ def lex(code,debugLexer=False):
         # Identify array literals and indexing operations
         if unprocessed.startswith("["):
             right = findMatching(unprocessed,left='[',right=']')
-            if lastWasValue: # This is an indexing operation
+            if lastWasValue and tokens[-1].name == "name" and tokens[-1].data in baseTypes:
+                # This is an array creation operation
+                dtype = tokens.pop(-1).data
+                tokens.append(Token("array",[dtype,lex(unprocessed[1:right])]))
+            elif lastWasValue: # This is an indexing operation
                 tokens.append(Token("indexing",lex(unprocessed[1:right])))
             else:
-                tokens.append(Token("array",lex(unprocessed[1:right])))
+                tokens.append(Token("literalArray",lex(unprocessed[1:right])))
             unprocessed = unprocessed[right+1:].strip()
             continue
         # Identify real literals

@@ -47,15 +47,17 @@ class ScimpleModule():
         pointer of the appropriate type.  This will be freed based on
         based on the allocations string, which defaults to freeAfterStatement.'''
         self.ensureDeclared("malloc","declare i8* @malloc(i32)")
+        size = self.newRegister()
         beforeCast = self.newRegister()
         result = self.newRegister()
-        self.out += ["{} = call i8* @malloc(i32 {})".format(beforeCast, dtype.size*count)]
+        self.out += ["{} = mul i32 {}, {}".format(size, str(dtype.size), str(count))]
+        self.out += ["{} = call i8* @malloc(i32 {})".format(beforeCast, size)]
         self.out += ["{} = bitcast i8* {} to {}*".format(result, beforeCast, dtype.irname)]
         allocID = 0+ScimpleModule.allocCounts
         ScimpleModule.allocCounts += 1
-        self.allocations[allocID] = [allocationStr,beforeCast,dtype.size*count]
+        self.allocations[allocID] = [allocationStr,beforeCast]
         if self.debugMemory:
-            sys.stderr.write("MEMORY: Will allocate {} bytes for {} {}(s), ID {}\n".format(dtype.size*count,count,dtype.name,allocID))
+            sys.stderr.write("MEMORY: Will allocate {} {}(s), ID {}\n".format(count,dtype.name,allocID))
         return result, allocID
 
 
@@ -79,11 +81,10 @@ class ScimpleModule():
         self.ensureDeclared("free","declare void @free(i8*)")
         if allocID not in self.allocations.keys():
             raise ValueError("INTERNAL ERROR: Tried to free memory I don't remember allocating!")
-        size = ScimpleModule.allocations[allocID][2]
         self.out += ["call void @free(i8* {})".format(addr)]
         del ScimpleModule.allocations[allocID]
         if self.debugMemory:
-            sys.stderr.write("MEMORY: Will free allocation ID {} ({} bytes).\n".format(allocID,size))
+            sys.stderr.write("MEMORY: Will free allocation ID {}.\n".format(allocID))
         return
 
 

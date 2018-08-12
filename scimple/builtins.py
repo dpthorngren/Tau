@@ -63,7 +63,7 @@ def assignment(inputs,token,mod):
     return None
 
 
-def createArray(inputs, token, mod):
+def literalArray(inputs, token, mod):
     sub = type(inputs[0])
     addr, allocID = mod.allocate(type(inputs[0]),len(inputs))
     for i, val in enumerate(inputs):
@@ -71,6 +71,14 @@ def createArray(inputs, token, mod):
         mod.out += ["{} = getelementptr {}, {}* {}, i32 {}".format(temp, sub.irname, sub.irname, addr, i)]
         mod.out += ["store {} {}, {}* {}".format(sub.irname,val.addr,sub.irname,temp)]
     result = Array(type(inputs[0]))(addr)
+    result.allocID = allocID
+    return result
+
+
+def createArray(inputs, token, mod):
+    dtype = Array(getType(token.data[0]))
+    addr, allocID = mod.allocate(dtype.subtype,inputs[0].addr)
+    result = dtype(addr)
     result.allocID = allocID
     return result
 
