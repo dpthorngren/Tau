@@ -8,11 +8,12 @@ from module import *
 
 
 class ScimpleJIT():
-    def __init__(self,debugIR=False,debugAST=False,quiet=True,debugLexer=False):
+    def __init__(self,debugIR=False,debugAST=False,quiet=True,debugLexer=False,debugMemory=False):
         # Record settings
         self.debugIR = debugIR
         self.debugAST = debugAST
         self.debugLexer = debugLexer
+        self.debugMemory = debugMemory
         self.quiet = quiet
 	# Setup the execution engine
         llvm.initialize()
@@ -32,7 +33,7 @@ class ScimpleJIT():
         '''Reads commands from the given InputBuffer objects and runs them
            as a new module in the current JIT session.'''
         # Generate the IR code from the source
-        m = ScimpleModule(True,self.debugAST,self.debugLexer)
+        m = ScimpleModule(True,self.debugAST,self.debugLexer,self.debugMemory)
         if loop:
             while not source.end():
                 parseTopLevel(m,source,True)
@@ -51,6 +52,7 @@ class ScimpleJIT():
             print "ERROR:", str(e).strip()
             return
         # Call the newly added function
+        m.endScope()
         return m.callIfNeeded(self.jit)
 
 
@@ -77,10 +79,10 @@ class ScimpleJIT():
         return
 
 
-def compileFile(filename,outputFile="a.out",debugIR=False,debugAST=False,debugLexer=False):
+def compileFile(filename,outputFile="a.out",debugIR=False,debugAST=False,debugLexer=False,debugMemory=False):
     '''Reads scimple code from a given file and compiles it to an executable.'''
     # Header information
-    m = ScimpleModule(False,debugAST,debugLexer)
+    m = ScimpleModule(False,debugAST,debugLexer,debugMemory)
     m.ensureDeclared("printf",'declare i32 @printf(i8* nocapture readonly, ...)')
     m.ensureDeclared("printFloat",'@printFloat = global [4 x i8] c"%f\\0A\\00\"')
     m.ensureDeclared("printInt",'@printInt = global [4 x i8] c"%i\\0A\\00"')
@@ -136,8 +138,8 @@ def parseTopLevel(mod,source,forJIT=False):
             raise ValueError("ERROR: Return type ({}) does not match declaration ({}).".format(output[1],dtype))
         mod.userFunctions[funcName] = (dtype,args)
         mod.alreadyDeclared.append(funcName)
+        mod.endScope()
         mod.body += ["    ret {} {}".format(output.irname,output.addr) + '}']
-        mod.localVars = {}
     else:
         # Top-level statement
         mod.isGlobal = forJIT

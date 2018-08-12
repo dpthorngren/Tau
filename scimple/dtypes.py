@@ -57,11 +57,13 @@ def Array(newSubtype):
     class Array(object):
         conversions = {}
         ctype = None
+        size = 8
         initStr = 'null'
         subtype = newSubtype
         name = 'Array:'+subtype.name
         irname = subtype.irname+'*'
         casting = [name]
+        allocID = None
         def __init__(self,addr):
             self.addr = addr
             return

@@ -2,6 +2,17 @@ from dtypes import *
 import re
 
 
+def freeMemory(inputs, token, mod):
+    if (len(token.data) != 1) or (token.data[0].name != "name"):
+        raise ValueError("Free must be given exactly one variable name.")
+    allocID = mod.getAllocID(token.data[0].data,True)
+    var = name(inputs,token.data[0],mod)
+    freeThis = mod.newRegister()
+    mod.out += ["{} = bitcast {} {} to i8*".format(freeThis, var.irname, var.addr)]
+    mod.freeMemory(allocID,freeThis)
+    return None
+
+
 def callFunction(inputs, token, mod):
     funcName, dtype = token.data
     result = dtype(mod.newRegister())
@@ -37,23 +48,31 @@ def assignment(inputs,token,mod):
     name = token.data
     if not re.match(r"[a-zA-Z_]\w*",name):
         raise ValueError("ERROR: Cannot assign to invalid variable name {}.".format(name))
+    allocID = None
+    if hasattr(inputs[0],"allocID") and inputs[0].allocID in mod.allocations.keys():
+        mod.markMemory(inputs[0].allocID,"userManaged")
+        allocID = inputs[0].allocID
     var = mod.getVariable(name)
     if var is None:
-        var = mod.newVariable(name,type(inputs[0]))
+        var = mod.newVariable(name,type(inputs[0]),allocID)
     elif inputs[0].name != var.name:
         raise ValueError("ERROR: variable type {} does not match right side type {}.\n".format(var[1],inputs[0].name))
     mod.out += ["store {} {}, {}* {}".format(inputs[0].irname,inputs[0].addr,var.irname,var.addr)]
+    if hasattr(inputs[0],"allocID") and inputs[0].allocID in mod.allocations.keys():
+        mod.markMemory(inputs[0].allocID,"userManaged")
     return None
 
 
 def createArray(inputs, token, mod):
     sub = type(inputs[0])
-    addr = mod.allocate(type(inputs[0]),len(inputs))
+    addr, allocID = mod.allocate(type(inputs[0]),len(inputs))
     for i, val in enumerate(inputs):
         temp = mod.newRegister()
         mod.out += ["{} = getelementptr {}, {}* {}, i32 {}".format(temp, sub.irname, sub.irname, addr, i)]
         mod.out += ["store {} {}, {}* {}".format(sub.irname,val.addr,sub.irname,temp)]
-    return Array(type(inputs[0]))(addr)
+    result = Array(type(inputs[0]))(addr)
+    result.allocID = allocID
+    return result
 
 
 def indexArray(inputs, token, mod):

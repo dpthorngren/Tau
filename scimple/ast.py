@@ -11,6 +11,7 @@ class ASTNode():
         # Keep reference to parent module
         self.module = module
         self.children = []
+        self.dtype = None
         if tokens is None:
             return
         # Find the token of lowest precedence
@@ -29,7 +30,6 @@ class ASTNode():
                 rightTokens = [Token('name',self.token.data),Token(self.token.name[:-1]),Token('()',rightTokens)]
                 self.token.name = '='
             self.children = [ASTNode(rightTokens,self.module)]
-            self.dtype = self.children[0].dtype
         elif self.token.name in ['and','or','xor','-','+','%','*','//','/','**','<=','>=','<','>','!=','==']:
             # Binary operators!
             self.children = [ASTNode(t,self.module) for t in [leftTokens,rightTokens]]
@@ -43,7 +43,13 @@ class ASTNode():
         elif self.token.name == "function":
             assertEmpty(leftTokens,rightTokens)
             caller, data = self.token.data
-            if caller in self.module.userFunctions.keys():
+            if caller in self.builtinFunctionCatalog.keys():
+                # Known builtin disguised as a function
+                self.children = [ASTNode(t,self.module) for t in splitArguments(data)]
+                self.dtype = self.children[0].dtype
+                self.resolveTyping(caller,self.builtinFunctionCatalog)
+                return
+            elif caller in self.module.userFunctions.keys():
                 # Known, user-defined function
                 self.dtype, args = self.module.userFunctions[caller]
                 self.children = [ASTNode(t,self.module).castTo(a[0]) for t, a in zip(splitArguments(data),args)]
@@ -71,6 +77,8 @@ class ASTNode():
             self.dtype = self.children[0].dtype
             self.children = [i.castTo(self.dtype) for i in self.children]
             self.dtype = Array(self.dtype)
+        elif self.token.name == "free":
+            self.dtype = None
         else:
             raise ValueError("ERROR: Can't parse:'{}'.\n".format(self.token.name))
         # Resolve the types given the child types and available builtins.
@@ -152,6 +160,10 @@ def splitArguments(tokens):
     return output
 
 
+# TODO: Although this system works, it is wildly inelegant.  I really need to fix it.
+ASTNode.builtinFunctionCatalog = {
+    # "free":{"Array:{}".format(t):[freeMemory,None] for t in ["Real","int"]},
+}
 # This catalog tells the AST what functions to call for a given token.
 # For type-dependent builtins, it also says the accepted and return types.
 ASTNode.builtinCatalog = {
@@ -163,7 +175,8 @@ ASTNode.builtinCatalog = {
     'print':printStatement,
     'array':createArray,
     '=':assignment,
-    # Typed builtins
+    'free':freeMemory,
+    # Typed builtins name:{"Arg1Type Args2Type":[function,retType]}
     'indexing':{"Array:{} Int".format(i):[indexArray,getType(i)] for i in ["Real","Int"]},
     'unary -':{i:[unaryPlusMinus,getType(i)] for i in ['Real','Int']},
     'unary +':{i:[unaryPlusMinus,getType(i)] for i in ['Real','Int']},

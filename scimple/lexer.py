@@ -72,7 +72,7 @@ class InputBuffer():
 class Token():
     precedence = ['print','=','+=','-=','/=','//=','*=','**=','%=','and','or',
                   'xor','<=','>=','<','>','!=','==', '-','+','%','*','//','/',
-                  '**','unary +','unary -','indexing','function','array','()',
+                  '**','unary +','unary -','indexing','function','free','array','()',
                   'literal','name','type']
     valueTokens = ['function','array','()','indexing','literal','name','type']
 
@@ -143,7 +143,11 @@ def lex(code,debugLexer=False):
             if tokens and tokens[-1].name == "name":
                 # This is a function call!
                 caller = tokens.pop(-1).data
-                tokens.append(Token("function",[caller,lex(unprocessed[1:right])]))
+                if caller in ["free"]:
+                    # This is a raw builtin function call
+                    tokens.append(Token(caller,lex(unprocessed[1:right])))
+                else:
+                    tokens.append(Token("function",[caller,lex(unprocessed[1:right])]))
             else:
                 tokens.append(Token("()",lex(unprocessed[1:right])))
             unprocessed = unprocessed[right+1:].strip()

@@ -8,13 +8,16 @@ class ScimpleModule():
     # Global state information (valid for all modules)
     globalVars = {}
     userFunctions = {}
+    allocations = {}
+    allocCounts = 0
     anonNumber = 0
 
-    def __init__(self,replMode=False,debugAST=False,debugLexer=False):
+    def __init__(self,replMode=False,debugAST=False,debugLexer=False,debugMemory=False):
         # Basic settings
         self.replMode = replMode
         self.debugAST = debugAST
         self.debugLexer = debugLexer
+        self.debugMemory = debugMemory
         self.isGlobal = False
         # Module name lists
         self.alreadyDeclared = []
@@ -39,20 +42,52 @@ class ScimpleModule():
         return
 
 
-    def allocate(self,dtype, count=1):
+    def allocate(self,dtype, count=1, allocationStr = "freeAfterStatement"):
         '''Allocates memory of the requested type and count and returns a
-        pointer of the appropriate type.  This will be freed when
-        self.endScope is called.'''
+        pointer of the appropriate type.  This will be freed based on
+        based on the allocations string, which defaults to freeAfterStatement.'''
         self.ensureDeclared("malloc","declare i8* @malloc(i32)")
-        self.ensureDeclared("free","declare void @free(i8*)")
         beforeCast = self.newRegister()
         result = self.newRegister()
         self.out += ["{} = call i8* @malloc(i32 {})".format(beforeCast, dtype.size*count)]
         self.out += ["{} = bitcast i8* {} to {}*".format(result, beforeCast, dtype.irname)]
-        return result
+        allocID = 0+ScimpleModule.allocCounts
+        ScimpleModule.allocCounts += 1
+        self.allocations[allocID] = [allocationStr,beforeCast,dtype.size*count]
+        if self.debugMemory:
+            sys.stderr.write("MEMORY: Will allocate {} bytes for {} {}(s), ID {}\n".format(dtype.size*count,count,dtype.name,allocID))
+        return result, allocID
 
 
-    def newVariable(self, name, dtype):
+    def markMemory(self, allocID, managementStr):
+        '''Sets the memory management of a given block to the given string.'''
+        try:
+            self.allocations[allocID][0] = managementStr
+        except:
+            raise ValueError("INTERNAL ERROR: Tried to mark memory of unknown allocation!")
+        return
+
+
+    def endScope(self):
+        for k in list(self.allocations.keys()):
+            if self.allocations[k][0] == "freeAfterStatement":
+                self.freeMemory(k,self.allocations[k][1])
+        self.localVars = {}
+
+
+    def freeMemory(self, allocID,addr):
+        self.ensureDeclared("free","declare void @free(i8*)")
+        if allocID not in self.allocations.keys():
+            raise ValueError("INTERNAL ERROR: Tried to free memory I don't remember allocating!")
+        size = ScimpleModule.allocations[allocID][2]
+        self.out += ["call void @free(i8* {})".format(addr)]
+        del ScimpleModule.allocations[allocID]
+        if self.debugMemory:
+            sys.stderr.write("MEMORY: Will free allocation ID {} ({} bytes).\n".format(allocID,size))
+        return
+
+
+    def newVariable(self, name, dtype, allocID=None):
         '''Checks that a variable has a valid name and isn't already in use,
            then creates the variable.'''
         if not re.match("^[a-zA-Z][\w\d]*$",name):
@@ -62,24 +97,38 @@ class ScimpleModule():
         out = []
         if self.isGlobal:
             self.ensureDeclared(name,'@usr_{} = global {} {}'.format(name,dtype.irname,dtype.initStr))
-            ScimpleModule.globalVars[name] = dtype
+            ScimpleModule.globalVars[name] = dtype, allocID
             name = "@usr_{}".format(name)
         else:
-            self.localVars[name] = dtype
+            self.localVars[name] = dtype, allocID
             name = "%usr_{}".format(name)
             out += ["{} = alloca {}".format(name,dtype.irname)]
         self.out += out
         return dtype(name)
 
 
+    def getAllocID(self, name, throw=False):
+        '''Checks if a variable exists and returns its allocation ID or None
+        if it is not associated with an allocation'''
+        if name in ScimpleModule.globalVars.keys():
+            dtype, allocID = ScimpleModule.globalVars[name]
+            return allocID
+        elif name in self.localVars.keys():
+            dtype, allocID = self.localVars[name]
+            return allocID
+        elif throw:
+            raise ValueError("ERROR: variable {} has not been declared.".format(name))
+        return None
+
+
     def getVariable(self, name, throw=False):
         '''Checks if a variable exists, and returns the name and dtype if so.'''
         if name in ScimpleModule.globalVars.keys():
-            dtype = ScimpleModule.globalVars[name]
+            dtype, allocID = ScimpleModule.globalVars[name]
             self.ensureDeclared(name,'@usr_{} = external global {}'.format(name,dtype.irname))
             return dtype("@usr_{}".format(name))
         elif name in self.localVars.keys():
-            dtype = self.localVars[name]
+            dtype, allocID = self.localVars[name]
             return dtype("%usr_{}".format(name))
         elif throw:
             raise ValueError("ERROR: variable {} has not been declared.".format(name))
