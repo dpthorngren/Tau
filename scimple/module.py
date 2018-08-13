@@ -103,7 +103,7 @@ class ScimpleModule():
         else:
             self.localVars[name] = dtype, allocID
             name = "%usr_{}".format(name)
-            out += ["{} = alloca {}".format(name,dtype.irname)]
+            out = ["{} = alloca {}".format(name,dtype.irname)] + out
         self.out += out
         return dtype(name)
 
