@@ -165,7 +165,7 @@ class ScimpleModule():
     def __str__(self):
         '''Print the module as IR code.'''
         out = list(self.header)
-        out += self.body
+        out += ["    "*bool(re.match(r'(:$|\s*^define|}$)',l))+l for l in self.body]
         if self.main or self.replMode:
             mainName = "main"
             ret = None

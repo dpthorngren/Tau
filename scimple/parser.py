@@ -126,9 +126,10 @@ def parseTopLevel(mod,source,forJIT=False):
             raise ValueError("ERROR: Function {} is already defined.".format(funcName))
         # Handle function arguments
         mod.body += ["define {} @{}({})".format(dtype.irname,funcName,",".join([i.irname+" %arg_"+j for i,j in args])) + "{"]
+        mod.body += ["entry:"]
         for argType, argName in args:
             mem = mod.newVariable(argName, argType)
-            mod.body += ["    store {} {}, {}* {}".format(argType.irname,"%arg_"+argName,mem.irname,mem.addr)]
+            mod.body += ["store {} {}, {}* {}".format(argType.irname,"%arg_"+argName,mem.irname,mem.addr)]
         # Read in the function body
         output = None
         while not source.end():
@@ -141,7 +142,8 @@ def parseTopLevel(mod,source,forJIT=False):
         mod.userFunctions[funcName] = (dtype,args)
         mod.alreadyDeclared.append(funcName)
         mod.endScope()
-        mod.body += ["    ret {} {}".format(output.irname,output.addr) + '}']
+        mod.body += ["ret {} {}".format(output.irname,output.addr)]
+        mod.body += ["}"]
     else:
         # Top-level statement
         mod.isGlobal = forJIT
@@ -159,20 +161,43 @@ def parseBlock(mod,source,level=0,forJIT=False):
     if blockHead[0].name == 'if':
         n = mod.blockCounter
         astOutput = ASTNode(blockHead[1:],mod).castTo(Bool).evaluate()
-        mod.out += ["    br i1 {}, label %if{}_then, label %if{}_resume".format(astOutput.addr,n,n)]
+        mod.out += ["br i1 {}, label %if{}_then, label %if{}_resume".format(astOutput.addr,n,n)]
         mod.out += ["if{}_then:".format(n)]
-        tail += ["    br label %if{}_resume".format(n)]
+        tail += ["br label %if{}_resume".format(n)]
         tail += ["if{}_resume:".format(n,n)]
         mod.blockCounter += 1
     elif blockHead[0].name == 'while':
         n = mod.blockCounter
-        mod.out += ["    br label %while{}_condition".format(n)]
+        mod.out += ["br label %while{}_condition".format(n)]
         mod.out += ["while{}_condition:".format(n)]
         astOutput = ASTNode(blockHead[1:],mod).castTo(Bool).evaluate()
-        mod.out += ["    br i1 {}, label %while{}_then, label %while{}_resume".format(astOutput.addr,n,n)]
+        mod.out += ["br i1 {}, label %while{}_then, label %while{}_resume".format(astOutput.addr,n,n)]
         mod.out += ["while{}_then:".format(n)]
-        tail += ["    br label %while{}_condition".format(n)]
+        tail += ["br label %while{}_condition".format(n)]
         tail += ["while{}_resume:".format(n,n)]
+        mod.blockCounter += 1
+    elif blockHead[0].name == 'for':
+        # Validate the input tokens
+        if (len(blockHead) != 4 or blockHead[2].name != "in" or blockHead[3].name != "function" or blockHead[3].data[0] != 'range'):
+            raise ValueError("ERROR: For loops beyond 'for [var] in range([n]):' aren't yet implemented.")
+        # Identify the blockID, counter variable and desired limit
+        n = mod.blockCounter
+        counter = blockHead[1]
+        limit = ASTNode(blockHead[3].data[1],mod).evaluate()
+        # Construct the IR code
+        assignment([Int('0')],counter,mod)
+        mod.out += ["br label %for{}_condition".format(n)]
+        mod.out += ["for{}_condition:".format(n)]
+        currentCounterValue = name([],counter,mod)
+        comp = comparison([currentCounterValue,limit],Token("<",[]),mod)
+        mod.out += ["br i1 {}, label %for{}_body, label %for{}_resume".format(comp.addr,n,n)]
+        mod.out += ["for{}_body:".format(n)]
+        counterUpdate = Int(mod.newRegister())
+        counterVar = mod.getVariable(counter.data)
+        tail += ["{} = add i32 {}, {}".format(counterUpdate.addr,currentCounterValue.addr,"1")]
+        tail += ["store i32 {}, i32* {}".format(counterUpdate.addr,counterVar.addr)]
+        tail += ["br label %for{}_condition".format(n)]
+        tail += ["for{}_resume:".format(n,n)]
         mod.blockCounter += 1
     else: # Not a block start, so treat as a standard statement
         return ASTNode(blockHead,mod).evaluate()

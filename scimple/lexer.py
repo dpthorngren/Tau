@@ -92,12 +92,20 @@ def lex(code,debugLexer=False):
     while unprocessed:
         lastWasValue = tokens and tokens[-1].name in Token.valueTokens
         # Identify block-starting keywords
-        match = re.match(r"(def|for|while|if)\b",unprocessed)
+        match = re.match(r"(def|while|if)\b",unprocessed)
         if match:
             if tokens:
                 raise ValueError("ERROR: Keyword {} must start the line.".format(match.group()))
             tokens.append(Token(match.group()))
             unprocessed = unprocessed[len(match.group()):-1].strip()
+            continue
+        # Identify for loop (currently only supports range(n))
+        match = re.match(r"for\b",unprocessed)
+        if match:
+            if tokens:
+                raise ValueError("ERROR: Keyword {} must start the line.".format(match.group()))
+            unprocessed = unprocessed[len(match.group()):-1].strip()
+            tokens.append(Token(match.group()))
             continue
         # Identify line-starting keywords
         match = re.match(r"(print|end)\b",unprocessed)
@@ -108,7 +116,7 @@ def lex(code,debugLexer=False):
             unprocessed = unprocessed[len(match.group()):].strip()
             continue
         # Identify other keywords
-        match = re.match(r"(and|or|xor)\b",unprocessed)
+        match = re.match(r"(in|and|or|xor)\b",unprocessed)
         if match:
             tokens.append(Token(match.group()))
             unprocessed = unprocessed[len(match.group()):].strip()

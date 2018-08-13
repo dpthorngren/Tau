@@ -4,39 +4,6 @@ import subprocess32 as subprocess
 import scimple
 from math import *
 
-snippet1 = '''
-k = 3
-while k < 10:
-    k = k + 1
-    if k > 8:
-        k = k*2
-        end
-    end
-k
-'''
-
-snippet2 = '''
-def Real foo(Real x, Int y):
-    x = x - 3
-    y / x
-    end
-cos(foo(sin(4.),8//3))
-'''
-
-snippet3 = '''
-def Int fibb(Int lim):
-    a = 0
-    b = 1
-    temp = 0
-    while a < lim:
-        temp = a + b
-        b = a
-        a = temp
-        end
-    a
-    end
-fibb(100)
-'''
 
 jit = scimple.ScimpleJIT(True,False,False,True)
 
@@ -159,6 +126,10 @@ class ScimpleTester(unittest.TestCase):
         self.assertEqual(jit.runCommand("t1[3]"),11)
 
 
+    def testForLoops(self):
+        self.assertEqual(jit.runCommand(snippet4),9915.)
+
+
     def testArrays(self):
         jit.runCommand("arr = [1,2,3,4,5]")
         self.assertEqual(jit.runCommand("5-arr[3]"),1)
@@ -170,6 +141,48 @@ class ScimpleTester(unittest.TestCase):
         self.assertEqual(jit.runCommand("arrf[1]-5"),-1.)
         self.assertEqual(jit.runCommand("[4.,3.,6.][1]-5"),-2.)
 
+
+snippet1 = '''
+k = 3
+while k < 10:
+    k = k + 1
+    if k > 8:
+        k = k*2
+        end
+    end
+k
+'''
+
+snippet2 = '''
+def Real foo(Real x, Int y):
+    x = x - 3
+    y / x
+    end
+cos(foo(sin(4.),8//3))
+'''
+
+snippet3 = '''
+def Int fibb(Int lim):
+    a = 0
+    b = 1
+    temp = 0
+    while a < lim:
+        temp = a + b
+        b = a
+        a = temp
+        end
+    a
+    end
+fibb(100)
+'''
+
+snippet4 = '''
+tot = 15.
+for m in range(100):
+    tot += m*2.
+    end
+tot
+'''
 
 if __name__ == "__main__":
     unittest.main()
