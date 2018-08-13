@@ -133,9 +133,13 @@ def lex(code,debugLexer=False):
         # Identify assignment operation
         match = re.match(r'((\+|-|//?|\*\*?|%)?=)',unprocessed)
         if match:
-            if len(tokens) != 1 or tokens[0].name != 'name':
+            if len(tokens) == 1 and tokens[0].name == 'name':
+                tokens.append(Token(match.group(),tokens.pop(0).data))
+            elif len(tokens) > 1 and tokens[-1].name == "indexing":
+                tokens, left = [], tokens
+                tokens.append(Token(match.group(),left))
+            else:
                 raise ValueError("ERROR: Assignment must be immeditely follow variable name.")
-            tokens.append(Token(match.group(),tokens.pop(0).data))
             unprocessed = unprocessed[len(match.group()):].strip()
             continue
         # Identify parentheses and function calls and eat the contents
@@ -193,7 +197,6 @@ def lex(code,debugLexer=False):
         if unprocessed.startswith(")"):
             raise ValueError("ERROR: Unmatched ending parenthesis.")
         raise ValueError("ERROR: Cannot interpret code: {}".format(code))
-    # TODO: Locate unary operators, function calls, token combination errors
     if debugLexer:
         sys.stderr.write("LEXER: "+code+" ===> "+str([t.name for t in tokens])+'\n')
     return tokens

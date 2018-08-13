@@ -44,6 +44,15 @@ def convert(inputs, token, mod):
     return result
 
 
+def indexingAssignment(inputs, token, mod):
+    arr, index, right = inputs
+    sub = arr.subtype
+    elem = mod.newRegister()
+    mod.out += ["{} = getelementptr {}, {}* {}, i32 {}".format(elem, sub.irname, sub.irname, arr.addr, index.addr)]
+    mod.out += ["store {} {}, {}* {}".format(right.irname,right.addr,sub.irname,elem)]
+    return
+
+
 def assignment(inputs,token,mod):
     name = token.data
     if not re.match(r"[a-zA-Z_]\w*",name):

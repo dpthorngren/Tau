@@ -25,11 +25,17 @@ class ASTNode():
             self.children = [ASTNode(rightTokens,self.module)]
         elif self.token.name in ['=','+=','-=','/=','//=','**=','*=','%=']:
             # Assignment operator and variants
-            assertEmpty(leftTokens)
             if self.token.name != '=':
                 rightTokens = [Token('name',self.token.data),Token(self.token.name[:-1]),Token('()',rightTokens)]
                 self.token.name = '='
-            self.children = [ASTNode(rightTokens,self.module)]
+            if type(self.token.data) is list: # Array indexing assignment
+                self.children = [ASTNode(self.token.data[:-1],self.module),
+                                 ASTNode(self.token.data[-1].data,self.module).castTo(Int),
+                                 ASTNode(rightTokens,self.module)]
+                self.children[-1] = self.children[-1].castTo(self.children[0].dtype.subtype)
+                self.token.name = "index="
+            else: # Regular old variable assignment
+                self.children = [ASTNode(rightTokens,self.module)]
         elif self.token.name in ['and','or','xor','-','+','%','*','//','/','**','<=','>=','<','>','!=','==']:
             # Binary operators!
             self.children = [ASTNode(t,self.module) for t in [leftTokens,rightTokens]]
@@ -55,7 +61,9 @@ class ASTNode():
                 self.children = [ASTNode(t,self.module).castTo(a[0]) for t, a in zip(splitArguments(data),args)]
             elif caller in baseTypes:
                 # Explicit type cast
-                self.children = [ASTNode(data,self.module).castTo(caller,True)]
+                self.token.name = "()"
+                self.children = [ASTNode(data,self.module).castTo(getType(caller),True)]
+                self.dtype = self.children[0].dtype
             else:
                 # Unknown function, assume it's declared somewhere else
                 self.children = [ASTNode(self.token.data[1],self.module)]
@@ -178,6 +186,7 @@ ASTNode.builtinCatalog = {
     'print':printStatement,
     'literalArray':literalArray,
     '=':assignment,
+    'index=':indexingAssignment,
     'free':freeMemory,
     'array':createArray,
     # Typed builtins name:{"Arg1Type Args2Type":[function,retType]}

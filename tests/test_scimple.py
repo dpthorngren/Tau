@@ -127,6 +127,12 @@ class ScimpleTester(unittest.TestCase):
         self.assertEqual(jit.runCommand("-sin(+4.4)"),-sin(4.4))
 
 
+    def testCasting(self):
+        self.assertEqual(jit.runCommand("Int(3)"),3)
+        self.assertEqual(jit.runCommand("Bool(3)"),True)
+        self.assertEqual(jit.runCommand("Real(Int(3)/2)**2"),1.5**2)
+
+
     def testFunctions(self):
         results = jit.runCommand(snippet2)
         self.assertEqual(results,0.861607742935979)
@@ -146,7 +152,11 @@ class ScimpleTester(unittest.TestCase):
 
 
     def testArrayGeneration(self):
-        self.assertEqual(jit.runCommand("Int[30]"),None)
+        self.assertEqual(jit.runCommand("t1 = Int[30]"),None)
+        self.assertEqual(jit.runCommand("t1[2] = 3"),None)
+        self.assertEqual(jit.runCommand("t1[2]"),3)
+        self.assertEqual(jit.runCommand("t1[3] = 2+t1[2]*3"),None)
+        self.assertEqual(jit.runCommand("t1[3]"),11)
 
 
     def testArrays(self):
