@@ -116,7 +116,6 @@ def parseTopLevel(mod,source,forJIT=False):
         # Clear the bad line from the buffer
         source.getLine()
         raise
-    # if re.match("^\s*def .*(.*):\s*",blockHead): # Function declaration
     if blockHead[0].name == 'def':
         # Determine function name and return type
         blockHead = lex(source.getLine(),mod.debugLexer)
@@ -131,10 +130,13 @@ def parseTopLevel(mod,source,forJIT=False):
             mem = mod.newVariable(argName, argType)
             mod.body += ["    store {} {}, {}* {}".format(argType.irname,"%arg_"+argName,mem.irname,mem.addr)]
         # Read in the function body
+        output = None
         while not source.end():
-            output = parseBlock(mod,source,1)
+            result = parseBlock(mod,source,1)
+            if result is not None:
+                output = result
         # Check that the return type is correct and end the function definition
-        if dtype.name != output.name:
+        if output is None or (dtype.name != output.name):
             raise ValueError("ERROR: Return type ({}) does not match declaration ({}).".format(output[1],dtype))
         mod.userFunctions[funcName] = (dtype,args)
         mod.alreadyDeclared.append(funcName)

@@ -168,7 +168,7 @@ class ScimpleModule():
         out += self.body
         if self.main or self.replMode:
             mainName = "main"
-            ret, retType = "0", "Int"
+            ret = None
             if self.replMode:
                 mainName = self.newAnonymousFunction()
                 if self.lastOutput:
