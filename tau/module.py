@@ -1,4 +1,4 @@
-from builtins import *
+import ctypes
 import sys
 import re
 
@@ -12,7 +12,7 @@ class TauModule():
     allocCounts = 0
     anonNumber = 0
 
-    def __init__(self,replMode=False,debugAST=False,debugLexer=False,debugMemory=False):
+    def __init__(self, replMode=False, debugAST=False, debugLexer=False, debugMemory=False):
         # Basic settings
         self.replMode = replMode
         self.debugAST = debugAST
@@ -32,8 +32,7 @@ class TauModule():
         self.numRegisters = 0
         self.blockCounter = 0
 
-
-    def ensureDeclared(self,name,code):
+    def ensureDeclared(self, name, code):
         '''Checks is name is listed as already declared.  If not, adds code
            to the header.  Otherwise does nothing.'''
         if name not in self.alreadyDeclared:
@@ -41,12 +40,11 @@ class TauModule():
             self.header += [code]
         return
 
-
-    def allocate(self,dtype, count=1, allocationStr = "freeAfterStatement"):
+    def allocate(self, dtype, count=1, allocationStr="freeAfterStatement"):
         '''Allocates memory of the requested type and count and returns a
         pointer of the appropriate type.  This will be freed based on
         based on the allocations string, which defaults to freeAfterStatement.'''
-        self.ensureDeclared("malloc","declare i8* @malloc(i32)")
+        self.ensureDeclared("malloc", "declare i8* @malloc(i32)")
         size = self.newRegister()
         beforeCast = self.newRegister()
         result = self.newRegister()
@@ -55,30 +53,28 @@ class TauModule():
         self.out += ["{} = bitcast i8* {} to {}*".format(result, beforeCast, dtype.irname)]
         allocID = 0+TauModule.allocCounts
         TauModule.allocCounts += 1
-        self.allocations[allocID] = [allocationStr,beforeCast]
+        self.allocations[allocID] = [allocationStr, beforeCast]
         if self.debugMemory:
-            sys.stderr.write("MEMORY: Will allocate {} {}(s), ID {}\n".format(count,dtype.name,allocID))
+            sys.stderr.write("MEMORY: Will allocate {} {}(s), ID {}\n"
+                             .format(count, dtype.name, allocID))
         return result, allocID
-
 
     def markMemory(self, allocID, managementStr):
         '''Sets the memory management of a given block to the given string.'''
         try:
             self.allocations[allocID][0] = managementStr
-        except:
+        except (KeyError, IndexError):
             raise ValueError("INTERNAL ERROR: Tried to mark memory of unknown allocation!")
         return
-
 
     def endScope(self):
         for k in list(self.allocations.keys()):
             if self.allocations[k][0] == "freeAfterStatement":
-                self.freeMemory(k,self.allocations[k][1])
+                self.freeMemory(k, self.allocations[k][1])
         self.localVars = {}
 
-
-    def freeMemory(self, allocID,addr):
-        self.ensureDeclared("free","declare void @free(i8*)")
+    def freeMemory(self, allocID, addr):
+        self.ensureDeclared("free", "declare void @free(i8*)")
         if allocID not in self.allocations.keys():
             raise ValueError("INTERNAL ERROR: Tried to free memory I don't remember allocating!")
         self.out += ["call void @free(i8* {})".format(addr)]
@@ -87,26 +83,25 @@ class TauModule():
             sys.stderr.write("MEMORY: Will free allocation ID {}.\n".format(allocID))
         return
 
-
     def newVariable(self, name, dtype, allocID=None):
         '''Checks that a variable has a valid name and isn't already in use,
            then creates the variable.'''
-        if not re.match("^[a-zA-Z][\w\d]*$",name):
+        if not re.match("^[a-zA-Z][\w\d]*$", name):
             raise ValueError("ERROR: {} is not a valid variable name.".format(name))
         if name in self.localVars.keys() or name in TauModule.globalVars.keys():
             raise ValueError("ERROR: variable {} is already defined.".format(name))
         out = []
         if self.isGlobal:
-            self.ensureDeclared(name,'@usr_{} = global {} {}'.format(name,dtype.irname,dtype.initStr))
+            self.ensureDeclared(name, '@usr_{} = global {} {}'
+                                .format(name, dtype.irname, dtype.initStr))
             TauModule.globalVars[name] = dtype, allocID
             name = "@usr_{}".format(name)
         else:
             self.localVars[name] = dtype, allocID
             name = "%usr_{}".format(name)
-            out = ["{} = alloca {}".format(name,dtype.irname)] + out
+            out = ["{} = alloca {}".format(name, dtype.irname)] + out
         self.out += out
         return dtype(name)
-
 
     def getAllocID(self, name, throw=False):
         '''Checks if a variable exists and returns its allocation ID or None
@@ -121,12 +116,12 @@ class TauModule():
             raise ValueError("ERROR: variable {} has not been declared.".format(name))
         return None
 
-
     def getVariable(self, name, throw=False):
         '''Checks if a variable exists, and returns the name and dtype if so.'''
         if name in TauModule.globalVars.keys():
             dtype, allocID = TauModule.globalVars[name]
-            self.ensureDeclared(name,'@usr_{} = external global {}'.format(name,dtype.irname))
+            self.ensureDeclared(name, '@usr_{} = external global {}'
+                                .format(name, dtype.irname))
             return dtype("@usr_{}".format(name))
         elif name in self.localVars.keys():
             dtype, allocID = self.localVars[name]
@@ -135,14 +130,12 @@ class TauModule():
             raise ValueError("ERROR: variable {} has not been declared.".format(name))
         return None
 
-
     def newRegister(self):
         '''Returns the name of a new unique register, and increments the
            register counter (used to generate future register names.'''
         name = "%reg_{}".format(self.numRegisters)
         self.numRegisters += 1
         return name
-
 
     def newAnonymousFunction(self):
         '''Returns the name of a new unique anonymous function, and increments
@@ -151,21 +144,19 @@ class TauModule():
         TauModule.anonNumber += 1
         return name
 
-
-    def callIfNeeded(self,jit):
+    def callIfNeeded(self, jit):
         '''If the last JIT compilation created an anonymous function, run it.'''
         ret, name = self.lastAnonymous
         if ret is not None and ret.ctype is not None:
-            return (CFUNCTYPE(ret.ctype)(jit.get_function_address(name)))()
+            return (ctypes.CFUNCTYPE(ret.ctype)(jit.get_function_address(name)))()
         else:
-            (CFUNCTYPE(c_int)(jit.get_function_address(name)))()
+            (ctypes.CFUNCTYPE(ctypes.c_int)(jit.get_function_address(name)))()
             return
-
 
     def __str__(self):
         '''Print the module as IR code.'''
         out = list(self.header)
-        out += ["    "*bool(re.match(r'(:$|\s*^define|}$)',l))+l for l in self.body]
+        out += ["    "*bool(re.match(r'(:$|\s*^define|}$)', l))+l for l in self.body]
         if self.main or self.replMode:
             mainName = "main"
             ret = None
@@ -180,7 +171,7 @@ class TauModule():
                 out += ["define {} @{}()".format(ret.irname, mainName) + "{"]
                 out += ["entry:"]
                 out += ["    "*(':' not in l)+l for l in self.main]
-                out += ["    ret {} {}".format(ret.irname,ret.addr)+'\n}']
+                out += ["    ret {} {}".format(ret.irname, ret.addr)+'\n}']
             else:
                 out += ["define void @{}()".format(mainName) + "{"]
                 out += ["entry:"]

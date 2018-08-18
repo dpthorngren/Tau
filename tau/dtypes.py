@@ -1,6 +1,7 @@
-from ctypes import CFUNCTYPE, c_int, c_double, c_bool
+from ctypes import c_int, c_double, c_bool
+baseTypes = ["Real", "Int", "Bool"]
+__arraysDefined__ = {}
 
-baseTypes = ["Real","Int","Bool"]
 
 class Real(object):
     name = 'Real'
@@ -10,10 +11,10 @@ class Real(object):
     initStr = '0.0'
     casting = ["Real"]
     conversions = {
-        "Int":[True,"{} = fptosi double {} to i32"],
-        "Bool":[True,"{} = fcmp one double {}, 0.0"]}
+        "Int": [True, "{} = fptosi double {} to i32"],
+        "Bool": [True, "{} = fcmp one double {}, 0.0"]}
 
-    def __init__(self,addr):
+    def __init__(self, addr):
         self.addr = addr
         return
 
@@ -24,12 +25,12 @@ class Int(object):
     ctype = c_int
     size = 4
     initStr = '0'
-    casting = ["Int","Real"]
+    casting = ["Int", "Real"]
     conversions = {
-        "Real":[False,"{} = sitofp i32 {} to double"],
-        "Bool":[False,"{} = icmp ne i32 {}, 0"]}
+        "Real": [False, "{} = sitofp i32 {} to double"],
+        "Bool": [False, "{} = icmp ne i32 {}, 0"]}
 
-    def __init__(self,addr):
+    def __init__(self, addr):
         self.addr = addr
         return
 
@@ -40,20 +41,20 @@ class Bool(object):
     ctype = c_bool
     size = 1
     initStr = 'false'
-    casting = ["Bool","Int","Real"]
+    casting = ["Bool", "Int", "Real"]
     conversions = {
-        "Real":[False,"{} = uitofp i1 {} to double"],
-        "Int":[False,"{} = zext i1 {} to i32"]}
+        "Real": [False, "{} = uitofp i1 {} to double"],
+        "Int": [False, "{} = zext i1 {} to i32"]}
 
-    def __init__(self,addr):
+    def __init__(self, addr):
         self.addr = addr
         return
 
 
-__arraysDefined__ = {}
 def Array(newSubtype):
     if newSubtype in __arraysDefined__.keys():
         return __arraysDefined__[newSubtype]
+
     class Array(object):
         conversions = {}
         ctype = None
@@ -64,7 +65,8 @@ def Array(newSubtype):
         irname = subtype.irname+'*'
         casting = [name]
         allocID = None
-        def __init__(self,addr):
+
+        def __init__(self, addr):
             self.addr = addr
             return
     __arraysDefined__[newSubtype] = Array
@@ -74,4 +76,4 @@ def Array(newSubtype):
 def getType(name):
     if name.startswith("Array:"):
         return Array(getType(name[6:]))
-    return {"Int":Int,"Real":Real,"Bool":Bool}[name]
+    return {"Int": Int, "Real": Real, "Bool": Bool}[name]

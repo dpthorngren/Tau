@@ -1,27 +1,26 @@
 from __future__ import division
 import unittest
-import subprocess32 as subprocess
 import tau
-from math import *
+from math import sin, cos, tan, atan
 
 
-jit = tau.TauJIT(True,False,False,True)
+jit = tau.TauJIT(True, False, False, True)
+
 
 class TauTester(unittest.TestCase):
     def testParenHandling(self):
-        self.assertEqual(tau.findMatching("(asdf)(asdf)",0),5)
-        self.assertEqual(tau.findMatching("(12/43.)-(asdf)",0),7)
-        self.assertEqual(tau.findMatching("(12/43.)-(asdf)",9),14)
-        self.assertEqual(tau.findMatching("(23/34*2.3%4.)-3/(3.42-12.)*(True < 3.2)",0),13)
-        self.assertEqual(tau.findMatching("(23/34*2.3%4.)-3/(3.42-12.)*(True < 3.2)",17),26)
-        self.assertEqual(tau.findMatching("(23/34*2.3%4.)-3/(3.42-12.)*(True < 3.2)",28),39)
-        self.assertEqual(tau.findMatching("1+(23/(34*2)%4.)-(True)",2),15)
-        self.assertEqual(tau.findMatching("1+(23/(34*2)%4.)-(True)",6),11)
-        self.assertEqual(tau.findMatching("1+(23/(34*2)%4.)-(True)",17),22)
+        self.assertEqual(tau.lexer.findMatching("(asdf)(asdf)", 0), 5)
+        self.assertEqual(tau.lexer.findMatching("(12/43.)-(asdf)", 0), 7)
+        self.assertEqual(tau.lexer.findMatching("(12/43.)-(asdf)", 9), 14)
+        self.assertEqual(tau.lexer.findMatching("(23/34*2.3%4.)-3/(3.42-12.)*(True < 3.2)", 0), 13)
+        self.assertEqual(tau.lexer.findMatching("(23/34*2.3%4.)-3/(3.42-12.)*(True < 3.2)", 17), 26)
+        self.assertEqual(tau.lexer.findMatching("(23/34*2.3%4.)-3/(3.42-12.)*(True < 3.2)", 28), 39)
+        self.assertEqual(tau.lexer.findMatching("1+(23/(34*2)%4.)-(True)", 2), 15)
+        self.assertEqual(tau.lexer.findMatching("1+(23/(34*2)%4.)-(True)", 6), 11)
+        self.assertEqual(tau.lexer.findMatching("1+(23/(34*2)%4.)-(True)", 17), 22)
         with self.assertRaises(ValueError):
-            tau.findMatching("(23/34*2.3%4.(-3/(3.42-12.)*(True < 3.2)",0)
+            tau.lexer.findMatching("(23/34*2.3%4.(-3/(3.42-12.)*(True < 3.2)", 0)
         return
-
 
     def testSameAsPython(self):
         # Commands which should yield identical results as python
@@ -52,60 +51,54 @@ class TauTester(unittest.TestCase):
         for e in expressions:
             pythonResults = eval(e)
             tauResults = jit.runCommand(e)
-            self.assertEqual(pythonResults,tauResults)
-
+            self.assertEqual(pythonResults, tauResults)
 
     def testAssignment(self):
         jit.runCommand("i = 23.")
         tauResults = jit.runCommand("i")
-        self.assertEqual(tauResults,23.)
+        self.assertEqual(tauResults, 23.)
         tauResults = jit.runCommand("i = 2.\n\ni=i+1\ni")
-        self.assertEqual(tauResults,3.)
+        self.assertEqual(tauResults, 3.)
         tauResults = jit.runCommand("i += 2.\ni")
-        self.assertEqual(tauResults,5.)
+        self.assertEqual(tauResults, 5.)
         tauResults = jit.runCommand("i *= 2.\ni")
-        self.assertEqual(tauResults,10.)
+        self.assertEqual(tauResults, 10.)
         tauResults = jit.runCommand("i **= 2.\ni")
-        self.assertEqual(tauResults,100.)
+        self.assertEqual(tauResults, 100.)
         tauResults = jit.runCommand("i /= 30.-10.\ni")
-        self.assertEqual(tauResults,5.)
+        self.assertEqual(tauResults, 5.)
         tauResults = jit.runCommand("i %= 3.\ni")
-        self.assertEqual(tauResults,2.)
+        self.assertEqual(tauResults, 2.)
         tauResults = jit.runCommand("i2 = 15\ni2 //= 4\ni2")
-        self.assertEqual(tauResults,3)
+        self.assertEqual(tauResults, 3)
         tauResults = jit.runCommand("i2 %= 2\ni2")
-        self.assertEqual(tauResults,1)
-
+        self.assertEqual(tauResults, 1)
 
     def testIfWhile(self):
         tauResults = jit.runCommand(snippet1)
-        self.assertEqual(tauResults,18)
-
+        self.assertEqual(tauResults, 18)
 
     def testUnary(self):
-        self.assertEqual(jit.runCommand("-3"),-3)
-        self.assertEqual(jit.runCommand("-3."),-3.)
-        self.assertEqual(jit.runCommand("2.*-3."),-6.)
-        self.assertEqual(jit.runCommand("2.*+3."),6.)
-        self.assertEqual(jit.runCommand("2*-3."),-6.)
-        self.assertEqual(jit.runCommand("x4 = 2."),None)
-        self.assertEqual(jit.runCommand("-x4**-2 * 2."),.5)
-        self.assertEqual(jit.runCommand("-sin(-2.)"),-sin(-2))
-        self.assertEqual(jit.runCommand("-sin(+4.4)"),-sin(4.4))
-
+        self.assertEqual(jit.runCommand("-3"), -3)
+        self.assertEqual(jit.runCommand("-3."), -3.)
+        self.assertEqual(jit.runCommand("2.*-3."), -6.)
+        self.assertEqual(jit.runCommand("2.*+3."), 6.)
+        self.assertEqual(jit.runCommand("2*-3."), -6.)
+        self.assertEqual(jit.runCommand("x4 = 2."), None)
+        self.assertEqual(jit.runCommand("-x4**-2 * 2."), .5)
+        self.assertEqual(jit.runCommand("-sin(-2.)"), -sin(-2))
+        self.assertEqual(jit.runCommand("-sin(+4.4)"), -sin(4.4))
 
     def testCasting(self):
-        self.assertEqual(jit.runCommand("Int(3)"),3)
-        self.assertEqual(jit.runCommand("Bool(3)"),True)
-        self.assertEqual(jit.runCommand("Real(Int(3)/2)**2"),1.5**2)
-
+        self.assertEqual(jit.runCommand("Int(3)"), 3)
+        self.assertEqual(jit.runCommand("Bool(3)"), True)
+        self.assertEqual(jit.runCommand("Real(Int(3)/2)**2"), 1.5**2)
 
     def testFunctions(self):
         results = jit.runCommand(snippet2)
-        self.assertEqual(results,0.861607742935979)
+        self.assertEqual(results, 0.861607742935979)
         results = jit.runCommand(snippet3)
-        self.assertEqual(results,144)
-
+        self.assertEqual(results, 144)
 
     def testErrorChecking(self):
         with self.assertRaises(ValueError):
@@ -117,29 +110,26 @@ class TauTester(unittest.TestCase):
         with self.assertRaises(ValueError):
             jit.runCommand("print 3 x4 2")
 
-
     def testArrayGeneration(self):
-        self.assertEqual(jit.runCommand("t1 = Int[30]"),None)
-        self.assertEqual(jit.runCommand("t1[2] = 3"),None)
-        self.assertEqual(jit.runCommand("t1[2]"),3)
-        self.assertEqual(jit.runCommand("t1[3] = 2+t1[2]*3"),None)
-        self.assertEqual(jit.runCommand("t1[3]"),11)
-
+        self.assertEqual(jit.runCommand("t1 = Int[30]"), None)
+        self.assertEqual(jit.runCommand("t1[2] = 3"), None)
+        self.assertEqual(jit.runCommand("t1[2]"), 3)
+        self.assertEqual(jit.runCommand("t1[3] = 2+t1[2]*3"), None)
+        self.assertEqual(jit.runCommand("t1[3]"), 11)
 
     def testForLoops(self):
-        self.assertEqual(jit.runCommand(snippet4),9915.)
-
+        self.assertEqual(jit.runCommand(snippet4), 9915.)
 
     def testArrays(self):
-        jit.runCommand("arr = [1,2,3,4,5]")
-        self.assertEqual(jit.runCommand("5-arr[3]"),1)
-        jit.runCommand("arr = [5,4,3]")
-        self.assertEqual(jit.runCommand("arr[1]-5"),-1)
-        jit.runCommand("arrf = [1.,2,3,4,5]")
-        self.assertEqual(jit.runCommand("5-arrf[3]"),1.)
-        jit.runCommand("arrf = [5.,4,3]")
-        self.assertEqual(jit.runCommand("arrf[1]-5"),-1.)
-        self.assertEqual(jit.runCommand("[4.,3.,6.][1]-5"),-2.)
+        jit.runCommand("arr = [1, 2, 3, 4, 5]")
+        self.assertEqual(jit.runCommand("5-arr[3]"), 1)
+        jit.runCommand("arr = [5, 4, 3]")
+        self.assertEqual(jit.runCommand("arr[1]-5"), -1)
+        jit.runCommand("arrf = [1., 2, 3, 4, 5]")
+        self.assertEqual(jit.runCommand("5-arrf[3]"), 1.)
+        jit.runCommand("arrf = [5., 4, 3]")
+        self.assertEqual(jit.runCommand("arrf[1]-5"), -1.)
+        self.assertEqual(jit.runCommand("[4., 3., 6.][1]-5"), -2.)
 
 
 snippet1 = '''
