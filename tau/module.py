@@ -3,7 +3,7 @@ import sys
 import re
 
 
-class ScimpleModule():
+class TauModule():
     '''Stores the state of the module as it is constructed'''
     # Global state information (valid for all modules)
     globalVars = {}
@@ -53,8 +53,8 @@ class ScimpleModule():
         self.out += ["{} = mul i32 {}, {}".format(size, str(dtype.size), str(count))]
         self.out += ["{} = call i8* @malloc(i32 {})".format(beforeCast, size)]
         self.out += ["{} = bitcast i8* {} to {}*".format(result, beforeCast, dtype.irname)]
-        allocID = 0+ScimpleModule.allocCounts
-        ScimpleModule.allocCounts += 1
+        allocID = 0+TauModule.allocCounts
+        TauModule.allocCounts += 1
         self.allocations[allocID] = [allocationStr,beforeCast]
         if self.debugMemory:
             sys.stderr.write("MEMORY: Will allocate {} {}(s), ID {}\n".format(count,dtype.name,allocID))
@@ -82,7 +82,7 @@ class ScimpleModule():
         if allocID not in self.allocations.keys():
             raise ValueError("INTERNAL ERROR: Tried to free memory I don't remember allocating!")
         self.out += ["call void @free(i8* {})".format(addr)]
-        del ScimpleModule.allocations[allocID]
+        del TauModule.allocations[allocID]
         if self.debugMemory:
             sys.stderr.write("MEMORY: Will free allocation ID {}.\n".format(allocID))
         return
@@ -93,12 +93,12 @@ class ScimpleModule():
            then creates the variable.'''
         if not re.match("^[a-zA-Z][\w\d]*$",name):
             raise ValueError("ERROR: {} is not a valid variable name.".format(name))
-        if name in self.localVars.keys() or name in ScimpleModule.globalVars.keys():
+        if name in self.localVars.keys() or name in TauModule.globalVars.keys():
             raise ValueError("ERROR: variable {} is already defined.".format(name))
         out = []
         if self.isGlobal:
             self.ensureDeclared(name,'@usr_{} = global {} {}'.format(name,dtype.irname,dtype.initStr))
-            ScimpleModule.globalVars[name] = dtype, allocID
+            TauModule.globalVars[name] = dtype, allocID
             name = "@usr_{}".format(name)
         else:
             self.localVars[name] = dtype, allocID
@@ -111,8 +111,8 @@ class ScimpleModule():
     def getAllocID(self, name, throw=False):
         '''Checks if a variable exists and returns its allocation ID or None
         if it is not associated with an allocation'''
-        if name in ScimpleModule.globalVars.keys():
-            dtype, allocID = ScimpleModule.globalVars[name]
+        if name in TauModule.globalVars.keys():
+            dtype, allocID = TauModule.globalVars[name]
             return allocID
         elif name in self.localVars.keys():
             dtype, allocID = self.localVars[name]
@@ -124,8 +124,8 @@ class ScimpleModule():
 
     def getVariable(self, name, throw=False):
         '''Checks if a variable exists, and returns the name and dtype if so.'''
-        if name in ScimpleModule.globalVars.keys():
-            dtype, allocID = ScimpleModule.globalVars[name]
+        if name in TauModule.globalVars.keys():
+            dtype, allocID = TauModule.globalVars[name]
             self.ensureDeclared(name,'@usr_{} = external global {}'.format(name,dtype.irname))
             return dtype("@usr_{}".format(name))
         elif name in self.localVars.keys():
@@ -147,8 +147,8 @@ class ScimpleModule():
     def newAnonymousFunction(self):
         '''Returns the name of a new unique anonymous function, and increments
            the register counter (used to generate future register names.'''
-        name = "anonymous_{}".format(ScimpleModule.anonNumber)
-        ScimpleModule.anonNumber += 1
+        name = "anonymous_{}".format(TauModule.anonNumber)
+        TauModule.anonNumber += 1
         return name
 
 

@@ -7,7 +7,7 @@ from ast import *
 from module import *
 
 
-class ScimpleJIT():
+class TauJIT():
     def __init__(self,debugIR=False,debugAST=False,quiet=True,debugLexer=False,debugMemory=False):
         # Record settings
         self.debugIR = debugIR
@@ -33,7 +33,7 @@ class ScimpleJIT():
         '''Reads commands from the given InputBuffer objects and runs them
            as a new module in the current JIT session.'''
         # Generate the IR code from the source
-        m = ScimpleModule(True,self.debugAST,self.debugLexer,self.debugMemory)
+        m = TauModule(True,self.debugAST,self.debugLexer,self.debugMemory)
         if loop:
             while not source.end():
                 parseTopLevel(m,source,True)
@@ -67,7 +67,7 @@ class ScimpleJIT():
         source = InputBuffer('-')
         output = None
         if not self.quiet:
-            print "ScimpleREPL 0.000001"
+            print "TauREPL 0.1"
             print "Almost no features, massively buggy.  Good luck!"
         while not source.end():
             try:
@@ -80,9 +80,9 @@ class ScimpleJIT():
 
 
 def compileFile(filename,outputFile="a.out",debugIR=False,debugAST=False,debugLexer=False,debugMemory=False):
-    '''Reads scimple code from a given file and compiles it to an executable.'''
+    '''Reads Tau code from a given file and compiles it to an executable.'''
     # Header information
-    m = ScimpleModule(False,debugAST,debugLexer,debugMemory)
+    m = TauModule(False,debugAST,debugLexer,debugMemory)
     m.ensureDeclared("printf",'declare i32 @printf(i8* nocapture readonly, ...)')
     m.ensureDeclared("printFloat",'@printFloat = global [4 x i8] c"%f\\0A\\00\"')
     m.ensureDeclared("printInt",'@printInt = global [4 x i8] c"%i\\0A\\00"')

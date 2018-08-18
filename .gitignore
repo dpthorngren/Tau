@@ -1,4 +1,5 @@
-experiments/
-old/
 *.pyc
 *.swp
+tau-egg.i
+tau.egg-info
+build/

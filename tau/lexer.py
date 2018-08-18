@@ -14,7 +14,7 @@ example_style = ptk.styles.style_from_dict({
 
 class InputBuffer():
     def __init__(self,source,replMode=False,quiet=False,stringInput=False):
-        self.promptHistory = ptk.history.FileHistory(os.path.expanduser("~/.scimplehistory"))
+        self.promptHistory = ptk.history.FileHistory(os.path.expanduser("~/.tauhistory"))
         self.source = source
         self.jitMode = (source == '-') or stringInput
         self.buffer = []
@@ -35,7 +35,7 @@ class InputBuffer():
                     if level > 0:
                         getPromptTokens = lambda x: [(ptk.token.Token.DefaultPrompt,(9+4*level)*" ")]
                     else:
-                        getPromptTokens = lambda x: [(ptk.token.Token.DefaultPrompt,"scimple> ")]
+                        getPromptTokens = lambda x: [(ptk.token.Token.DefaultPrompt,"tau> ")]
                     output = ptk.shortcuts.prompt(history=self.promptHistory,get_prompt_tokens=getPromptTokens, style=example_style)
                 else:
                     output = sys.stdin.readline()

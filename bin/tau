@@ -1,11 +1,11 @@
 #!/usr/bin/python
 import argparse
-import scimple
+import tau
 
 
 if __name__ == "__main__":
     # Parse the command line arguments
-    ap = argparse.ArgumentParser(description="Compiles Scimple code or starts a REPL session.")
+    ap = argparse.ArgumentParser(description="Compiles Tau code or starts a REPL session.")
     ap.add_argument("filename",nargs='?',help="The file to compile; if absent, start a REPL session.")
     ap.add_argument("--debug-ir",action='store_true',help="Print IR code immediately after it is generated.")
     ap.add_argument("--debug-ast",action='store_true',help="Print the string passed to initialize each abstract syntax tree node.")
@@ -17,10 +17,10 @@ if __name__ == "__main__":
 
     # Startup the parser and compile or run a REPL
     if args.filename:
-        scimple.compileFile(args.filename,args.output,args.debug_ir,args.debug_ast,args.debug_lexer,args.debug_memory)
+        tau.compileFile(args.filename,args.output,args.debug_ir,args.debug_ast,args.debug_lexer,args.debug_memory)
     else:
         try:
-            p = scimple.ScimpleJIT(args.debug_ir,args.debug_ast,args.quiet,args.debug_lexer,args.debug_memory)
+            p = tau.TauJIT(args.debug_ir,args.debug_ast,args.quiet,args.debug_lexer,args.debug_memory)
             p.runREPL()
         except EOFError, KeyboardInterrupt:
             print ""

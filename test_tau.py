@@ -1,25 +1,25 @@
 from __future__ import division
 import unittest
 import subprocess32 as subprocess
-import scimple
+import tau
 from math import *
 
 
-jit = scimple.ScimpleJIT(True,False,False,True)
+jit = tau.TauJIT(True,False,False,True)
 
-class ScimpleTester(unittest.TestCase):
+class TauTester(unittest.TestCase):
     def testParenHandling(self):
-        self.assertEqual(scimple.findMatching("(asdf)(asdf)",0),5)
-        self.assertEqual(scimple.findMatching("(12/43.)-(asdf)",0),7)
-        self.assertEqual(scimple.findMatching("(12/43.)-(asdf)",9),14)
-        self.assertEqual(scimple.findMatching("(23/34*2.3%4.)-3/(3.42-12.)*(True < 3.2)",0),13)
-        self.assertEqual(scimple.findMatching("(23/34*2.3%4.)-3/(3.42-12.)*(True < 3.2)",17),26)
-        self.assertEqual(scimple.findMatching("(23/34*2.3%4.)-3/(3.42-12.)*(True < 3.2)",28),39)
-        self.assertEqual(scimple.findMatching("1+(23/(34*2)%4.)-(True)",2),15)
-        self.assertEqual(scimple.findMatching("1+(23/(34*2)%4.)-(True)",6),11)
-        self.assertEqual(scimple.findMatching("1+(23/(34*2)%4.)-(True)",17),22)
+        self.assertEqual(tau.findMatching("(asdf)(asdf)",0),5)
+        self.assertEqual(tau.findMatching("(12/43.)-(asdf)",0),7)
+        self.assertEqual(tau.findMatching("(12/43.)-(asdf)",9),14)
+        self.assertEqual(tau.findMatching("(23/34*2.3%4.)-3/(3.42-12.)*(True < 3.2)",0),13)
+        self.assertEqual(tau.findMatching("(23/34*2.3%4.)-3/(3.42-12.)*(True < 3.2)",17),26)
+        self.assertEqual(tau.findMatching("(23/34*2.3%4.)-3/(3.42-12.)*(True < 3.2)",28),39)
+        self.assertEqual(tau.findMatching("1+(23/(34*2)%4.)-(True)",2),15)
+        self.assertEqual(tau.findMatching("1+(23/(34*2)%4.)-(True)",6),11)
+        self.assertEqual(tau.findMatching("1+(23/(34*2)%4.)-(True)",17),22)
         with self.assertRaises(ValueError):
-            scimple.findMatching("(23/34*2.3%4.(-3/(3.42-12.)*(True < 3.2)",0)
+            tau.findMatching("(23/34*2.3%4.(-3/(3.42-12.)*(True < 3.2)",0)
         return
 
 
@@ -51,35 +51,35 @@ class ScimpleTester(unittest.TestCase):
             "sin(atan(32.423-32.)/3.) + (12-True)"]
         for e in expressions:
             pythonResults = eval(e)
-            scimpleResults = jit.runCommand(e)
-            self.assertEqual(pythonResults,scimpleResults)
+            tauResults = jit.runCommand(e)
+            self.assertEqual(pythonResults,tauResults)
 
 
     def testAssignment(self):
         jit.runCommand("i = 23.")
-        scimpleResults = jit.runCommand("i")
-        self.assertEqual(scimpleResults,23.)
-        scimpleResults = jit.runCommand("i = 2.\n\ni=i+1\ni")
-        self.assertEqual(scimpleResults,3.)
-        scimpleResults = jit.runCommand("i += 2.\ni")
-        self.assertEqual(scimpleResults,5.)
-        scimpleResults = jit.runCommand("i *= 2.\ni")
-        self.assertEqual(scimpleResults,10.)
-        scimpleResults = jit.runCommand("i **= 2.\ni")
-        self.assertEqual(scimpleResults,100.)
-        scimpleResults = jit.runCommand("i /= 30.-10.\ni")
-        self.assertEqual(scimpleResults,5.)
-        scimpleResults = jit.runCommand("i %= 3.\ni")
-        self.assertEqual(scimpleResults,2.)
-        scimpleResults = jit.runCommand("i2 = 15\ni2 //= 4\ni2")
-        self.assertEqual(scimpleResults,3)
-        scimpleResults = jit.runCommand("i2 %= 2\ni2")
-        self.assertEqual(scimpleResults,1)
+        tauResults = jit.runCommand("i")
+        self.assertEqual(tauResults,23.)
+        tauResults = jit.runCommand("i = 2.\n\ni=i+1\ni")
+        self.assertEqual(tauResults,3.)
+        tauResults = jit.runCommand("i += 2.\ni")
+        self.assertEqual(tauResults,5.)
+        tauResults = jit.runCommand("i *= 2.\ni")
+        self.assertEqual(tauResults,10.)
+        tauResults = jit.runCommand("i **= 2.\ni")
+        self.assertEqual(tauResults,100.)
+        tauResults = jit.runCommand("i /= 30.-10.\ni")
+        self.assertEqual(tauResults,5.)
+        tauResults = jit.runCommand("i %= 3.\ni")
+        self.assertEqual(tauResults,2.)
+        tauResults = jit.runCommand("i2 = 15\ni2 //= 4\ni2")
+        self.assertEqual(tauResults,3)
+        tauResults = jit.runCommand("i2 %= 2\ni2")
+        self.assertEqual(tauResults,1)
 
 
     def testIfWhile(self):
-        scimpleResults = jit.runCommand(snippet1)
-        self.assertEqual(scimpleResults,18)
+        tauResults = jit.runCommand(snippet1)
+        self.assertEqual(tauResults,18)
 
 
     def testUnary(self):
