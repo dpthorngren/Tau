@@ -52,9 +52,9 @@ def Int fibb(Int lim):
 ```python
 # Compute pi inefficiently (Gregory-Leibniz Series)
 def Real computePi(Int n):
-    piApprox = 0
+    piApprox = 0.
     for i in range(n):
-        piApprox += 4*(-1)**i / (2*n+1)
+        piApprox += 4*(-1)**i / (2*i+1)
         end
     piApprox
     end

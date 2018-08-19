@@ -1,7 +1,7 @@
 from __future__ import division
 import unittest
 import tau
-from math import sin, cos, tan, atan
+from math import sin, cos, tan, atan, pi
 
 
 jit = tau.TauJIT(True, False, False, True)
@@ -9,9 +9,9 @@ jit = tau.TauJIT(True, False, False, True)
 
 class TauTester(unittest.TestCase):
     def testParenHandling(self):
-        self.assertEqual(tau.lexer.findMatching("(asdf)(asdf)", 0), 5)
-        self.assertEqual(tau.lexer.findMatching("(12/43.)-(asdf)", 0), 7)
-        self.assertEqual(tau.lexer.findMatching("(12/43.)-(asdf)", 9), 14)
+        self.assertEqual(tau.lexer.findMatching("(45jf)(hgfd)", 0), 5)
+        self.assertEqual(tau.lexer.findMatching("(12/43.)-(24-3)", 0), 7)
+        self.assertEqual(tau.lexer.findMatching("(12/43.)-(2.*4)", 9), 14)
         self.assertEqual(tau.lexer.findMatching("(23/34*2.3%4.)-3/(3.42-12.)*(True < 3.2)", 0), 13)
         self.assertEqual(tau.lexer.findMatching("(23/34*2.3%4.)-3/(3.42-12.)*(True < 3.2)", 17), 26)
         self.assertEqual(tau.lexer.findMatching("(23/34*2.3%4.)-3/(3.42-12.)*(True < 3.2)", 28), 39)
@@ -99,6 +99,8 @@ class TauTester(unittest.TestCase):
         self.assertEqual(results, 0.861607742935979)
         jit.runCommand(snippet3)
         self.assertEqual(jit.runCommand("fibb(100)"), 144)
+        jit.runCommand(snippet5)
+        self.assertAlmostEqual(jit.runCommand("computePi(1000)"), pi, 2)
 
     def testErrorChecking(self):
         with self.assertRaises(ValueError):
@@ -175,6 +177,16 @@ for m in range(100):
     tot += m*2.
     end
 tot
+'''
+
+snippet5 = '''
+def Real computePi(Int n):
+    piApprox = 0.
+    for j in range(n):
+        piApprox += 4*(-1)**j / (2*j+1)
+        end
+    piApprox
+    end
 '''
 
 if __name__ == "__main__":
