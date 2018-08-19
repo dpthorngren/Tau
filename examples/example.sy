@@ -1,6 +1,0 @@
-x = 3.
-y = 34.
-print x/y
-z = 34
-print 3.66 + x
-print z/3
