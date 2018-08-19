@@ -97,8 +97,8 @@ class TauTester(unittest.TestCase):
     def testFunctions(self):
         results = jit.runCommand(snippet2)
         self.assertEqual(results, 0.861607742935979)
-        results = jit.runCommand(snippet3)
-        self.assertEqual(results, 144)
+        jit.runCommand(snippet3)
+        self.assertEqual(jit.runCommand("fibb(100)"), 144)
 
     def testErrorChecking(self):
         with self.assertRaises(ValueError):
@@ -130,6 +130,10 @@ class TauTester(unittest.TestCase):
         jit.runCommand("arrf = [5., 4, 3]")
         self.assertEqual(jit.runCommand("arrf[1]-5"), -1.)
         self.assertEqual(jit.runCommand("[4., 3., 6.][1]-5"), -2.)
+        jit.runCommand("arrf[1] = 3")
+        self.assertEqual(jit.runCommand("arrf[1]"), 3.)
+        jit.runCommand("arrf[1] += 3")
+        self.assertEqual(jit.runCommand("arrf[1]"), 6.)
 
 
 snippet1 = '''
@@ -163,7 +167,6 @@ def Int fibb(Int lim):
         end
     a
     end
-fibb(100)
 '''
 
 snippet4 = '''

@@ -28,6 +28,7 @@ class TauModule():
         self.main = []
         self.out = self.body
         self.lastAnonymous = None
+        self.lastOutput = None
         # Counters for naming schemes
         self.numRegisters = 0
         self.blockCounter = 0

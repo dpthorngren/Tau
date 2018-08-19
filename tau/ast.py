@@ -25,9 +25,12 @@ class ASTNode():
         elif self.token.name in ['=', '+=', '-=', '/=', '//=', '**=', '*=', '%=']:
             # Assignment operator and variants
             if self.token.name != '=':
-                rightTokens = [Token('name', self.token.data),
-                               Token(self.token.name[:-1]),
-                               Token('()', rightTokens)]
+                # Handle extra operation
+                if type(self.token.data) is list:
+                    left = self.token.data
+                else:
+                    left = [Token('name', self.token.data)]
+                rightTokens = left + [Token(self.token.name[:-1]), Token('()', rightTokens)]
                 self.token.name = '='
             if type(self.token.data) is list:
                 # Array indexing assignment
@@ -37,7 +40,8 @@ class ASTNode():
                     ASTNode(rightTokens, self.module)]
                 self.children[-1] = self.children[-1].castTo(self.children[0].dtype.subtype)
                 self.token.name = "index="
-            else:  # Regular old variable assignment
+            else:
+                # Regular old variable assignment
                 self.children = [ASTNode(rightTokens, self.module)]
         elif self.token.name in ['and', 'or', 'xor', '-', '+', '%', '*', '//',
                                  '/', '**', '<=', '>=', '<', '>', '!=', '==']:

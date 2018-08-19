@@ -11,7 +11,6 @@ setup(name='tau',
           'subprocess32',
           'llvmlite',
           'pygments',
-          'prompt_toolkit<2.0',
-          'ctypes'],
+          'prompt_toolkit<2.0'],
       test_suite="test_tau.TauTester"
       )
