@@ -168,6 +168,8 @@ def assertEmpty(left, right=[]):
 def splitArguments(tokens):
     '''Divides a list of tokens into a list of lists, splitting at the location
        of ',' tokens.'''
+    if len(tokens) == 0:
+        return []
     output = []
     subOutput = []
     for t in tokens:

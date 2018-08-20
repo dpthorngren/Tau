@@ -74,7 +74,13 @@ class TauTester(unittest.TestCase):
         self.assertEqual(tauResults, 1)
 
     def testIfWhile(self):
-        tauResults = jit.runCommand(snippet1)
+        tauResults = jit.runCommand(
+            "k = 3\n"
+            "while k < 10:\n"
+            "    k = k + 1\n"
+            "    if k > 8:\n"
+            "        k = k*2\n"
+            "k")
         self.assertEqual(tauResults, 18)
 
     def testUnary(self):
@@ -94,11 +100,35 @@ class TauTester(unittest.TestCase):
         self.assertEqual(jit.runCommand("Real(Int(3)/2)**2"), 1.5**2)
 
     def testFunctions(self):
-        results = jit.runCommand(snippet2)
+        results = jit.runCommand(
+            "def Real noArgs():\n"
+            "    25**3\n"
+            "noArgs()")
+        self.assertEqual(results, 25**3)
+        self.assertEqual(jit.runCommand("noArgs()"), 25**3)
+        results = jit.runCommand(
+            "def Real foo(Real x, Int y):\n"
+            "    x = x - 3\n"
+            "    y / x\n"
+            "cos(foo(sin(4.),8//3))")
         self.assertEqual(results, 0.861607742935979)
-        jit.runCommand(snippet3)
+        jit.runCommand(
+            "def Int fibb(Int lim):\n"
+            "    a = 0\n"
+            "    b = 1\n"
+            "    temp = 0\n"
+            "    while a < lim:\n"
+            "        temp = a + b\n"
+            "        b = a\n"
+            "        a = temp\n"
+            "    a")
         self.assertEqual(jit.runCommand("fibb(100)"), 144)
-        jit.runCommand(snippet5)
+        jit.runCommand(
+            "def Real computePi(Int n):\n"
+            "    piApprox = 0.\n"
+            "    for j in range(n):\n"
+            "        piApprox += 4*(-1)**j / (2*j+1)\n"
+            "    piApprox")
         self.assertAlmostEqual(jit.runCommand("computePi(1000)"), pi, 2)
 
     def testErrorChecking(self):
@@ -119,7 +149,12 @@ class TauTester(unittest.TestCase):
         self.assertEqual(jit.runCommand("t1[3]"), 11)
 
     def testForLoops(self):
-        self.assertEqual(jit.runCommand(snippet4), 9915.)
+        result = jit.runCommand(
+            "tot = 15.\n"
+            "for m in range(100):\n"
+            "    tot += m*2.\n"
+            "tot")
+        self.assertEqual(result, 9915.)
 
     def testArrays(self):
         jit.runCommand("arr = [1, 2, 3, 4, 5]")
@@ -163,49 +198,6 @@ class TauTester(unittest.TestCase):
         with self.assertRaises(ValueError):
             jit.runCommand("def Real failFunction3(Int n):\n        1.0")
 
-
-snippet1 = '''
-k = 3
-while k < 10:
-    k = k + 1
-    if k > 8:
-        k = k*2
-k
-'''
-
-snippet2 = '''
-def Real foo(Real x, Int y):
-    x = x - 3
-    y / x
-cos(foo(sin(4.),8//3))
-'''
-
-snippet3 = '''
-def Int fibb(Int lim):
-    a = 0
-    b = 1
-    temp = 0
-    while a < lim:
-        temp = a + b
-        b = a
-        a = temp
-    a
-'''
-
-snippet4 = '''
-tot = 15.
-for m in range(100):
-    tot += m*2.
-tot
-'''
-
-snippet5 = '''
-def Real computePi(Int n):
-    piApprox = 0.
-    for j in range(n):
-        piApprox += 4*(-1)**j / (2*j+1)
-    piApprox
-'''
 
 if __name__ == "__main__":
     unittest.main()
