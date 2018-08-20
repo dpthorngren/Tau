@@ -39,7 +39,7 @@ if __name__ == "__main__":
     if args.filename:
         # Startup the parser and compile the input file
         tau.compileFile(args.filename, args.output, args.debug_ir, args.debug_ast,
-                        args.debug_lexer, args.debug_memory)
+                        args.debug_lexer, args.debug_memory, args.quiet)
     else:
         try:
             # Create a JIT compiler and run it as a REPL until it runs out of input
