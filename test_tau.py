@@ -20,7 +20,6 @@ class TauTester(unittest.TestCase):
         self.assertEqual(tau.lexer.findMatching("1+(23/(34*2)%4.)-(True)", 17), 22)
         with self.assertRaises(ValueError):
             tau.lexer.findMatching("(23/34*2.3%4.(-3/(3.42-12.)*(True < 3.2)", 0)
-        return
 
     def testSameAsPython(self):
         # Commands which should yield identical results as python
@@ -137,6 +136,33 @@ class TauTester(unittest.TestCase):
         jit.runCommand("arrf[1] += 3")
         self.assertEqual(jit.runCommand("arrf[1]"), 6.)
 
+    def testIndentingErrors(self):
+        with self.assertRaises(ValueError):
+            jit.runCommand("for j in range(20):\n  print j")
+        with self.assertRaises(ValueError):
+            jit.runCommand("for j in range(20):\n        print j")
+        with self.assertRaises(ValueError):
+            jit.runCommand("for l in range(20):\nprint l")
+        jit.runCommand("k = 5")
+        with self.assertRaises(ValueError):
+            jit.runCommand("if k < 10:\nprint l")
+        with self.assertRaises(ValueError):
+            jit.runCommand("if k < 10:\n  print l")
+        with self.assertRaises(ValueError):
+            jit.runCommand("if k < 10:\n        print l")
+        with self.assertRaises(ValueError):
+            jit.runCommand("while  k < 10:\nk += 1")
+        with self.assertRaises(ValueError):
+            jit.runCommand("while  k < 10:\n  k += 1")
+        with self.assertRaises(ValueError):
+            jit.runCommand("while k < 10:\n        k += 1")
+        with self.assertRaises(ValueError):
+            jit.runCommand("def Real failFunction1(Int n):\n1.0")
+        with self.assertRaises(ValueError):
+            jit.runCommand("def Real failFunction2(Int n):\n  1.0")
+        with self.assertRaises(ValueError):
+            jit.runCommand("def Real failFunction3(Int n):\n        1.0")
+
 
 snippet1 = '''
 k = 3
@@ -144,8 +170,6 @@ while k < 10:
     k = k + 1
     if k > 8:
         k = k*2
-        end
-    end
 k
 '''
 
@@ -153,7 +177,6 @@ snippet2 = '''
 def Real foo(Real x, Int y):
     x = x - 3
     y / x
-    end
 cos(foo(sin(4.),8//3))
 '''
 
@@ -166,16 +189,13 @@ def Int fibb(Int lim):
         temp = a + b
         b = a
         a = temp
-        end
     a
-    end
 '''
 
 snippet4 = '''
 tot = 15.
 for m in range(100):
     tot += m*2.
-    end
 tot
 '''
 
@@ -184,9 +204,7 @@ def Real computePi(Int n):
     piApprox = 0.
     for j in range(n):
         piApprox += 4*(-1)**j / (2*j+1)
-        end
     piApprox
-    end
 '''
 
 if __name__ == "__main__":

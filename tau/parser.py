@@ -50,8 +50,7 @@ class TauJIT():
         try:
             mod = llvm.parse_assembly(irCode)
             self.jit.add_module(mod)
-        except RuntimeError, e:
-            print "ERROR:", str(e).strip()
+        except RuntimeError:
             return
         # Call the newly added function
         m.endScope()
@@ -59,17 +58,17 @@ class TauJIT():
 
     def runCommand(self, commandString):
         '''Runs a command (or series of commands) in the JIT session.'''
-        source = lexer.InputBuffer(commandString, stringInput=True)
+        source = lexer.InputBuffer(commandString)
         return self._runFromSource_(source, True)
 
     def runREPL(self):
         '''Starts a REPL in the JIT session.'''
-        source = lexer.InputBuffer('-')
-        output = None
+        source = lexer.InputBuffer(sys.stdin)
         if not self.quiet:
             print "TauREPL 0.1"
             print "Almost no features, massively buggy.  Good luck!"
         while not source.end():
+            output = None
             try:
                 output = self._runFromSource_(source)
             except ValueError, e:
@@ -136,14 +135,16 @@ def parseTopLevel(mod, source, forJIT=False):
                          .format(argType.irname, "%arg_"+argName, mem.irname, mem.addr)]
         # Read in the function body
         output = None
-        while not source.end():
+        if source.end(1):
+            raise ValueError("ERROR: Expected a block (maybe you forgot to indent?)")
+        while not source.end(1):
             result = parseBlock(mod, source, 1)
             if result is not None:
                 output = result
         # Check that the return type is correct and end the function definition
         if output is None or (dtype.name != output.name):
-            raise ValueError("ERROR: Return type ({}) does not match declaration ({})."
-                             .format(output[1], dtype))
+            raise ValueError("ERROR: Return type {} does not match declaration {}."
+                             .format(output.name, dtype.name))
         mod.userFunctions[funcName] = (dtype, args)
         mod.alreadyDeclared.append(funcName)
         mod.endScope()
@@ -153,7 +154,7 @@ def parseTopLevel(mod, source, forJIT=False):
         # Top-level statement
         mod.isGlobal = forJIT
         mod.out = mod.main
-        mod.lastOutput = parseBlock(mod, source, 1, forJIT)
+        mod.lastOutput = parseBlock(mod, source, 0, forJIT)
         mod.out = mod.body
         mod.isGlobal = False
     return
@@ -211,7 +212,9 @@ def parseBlock(mod, source, level=0, forJIT=False):
         # Not a block start, so treat as a standard statement
         return ast.ASTNode(blockHead, mod).evaluate()
     # Process the block body
-    while not source.end(level):
+    if source.end(level+1):
+        raise ValueError("ERROR: Expected a block (maybe you forgot to indent?)")
+    while not source.end(level+1):
         parseBlock(mod, source, level+1, forJIT)
     mod.out += tail
     return None

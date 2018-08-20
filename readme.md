@@ -43,9 +43,7 @@ def Int fibb(Int lim):
         temp = a + b
         b = a
         a = temp
-        end
     a
-    end
 ```
 
 
@@ -55,9 +53,7 @@ def Real computePi(Int n):
     piApprox = 0.
     for i in range(n):
         piApprox += 4*(-1)**i / (2*i+1)
-        end
     piApprox
-    end
 ```
 
 ## Development Status
@@ -69,6 +65,7 @@ Completed does not mean bug-free, unfortunately.
  * Functions
  * Simple Arrays
  * Calling C standard library routines
+ * Implicit block ending (no more end statement)
 
 ### To Do:
  * More unit tests (never enough)
@@ -76,6 +73,5 @@ Completed does not mean bug-free, unfortunately.
  * True for loops (current is placeholder)
  * Proper import system
  * Vectorized array operations
- * Implicit block ending (no more end statement)
  * Explicit return statement (no more returning last output)
  * Encapsulation (classes, but perhaps not fully object-oriented)
