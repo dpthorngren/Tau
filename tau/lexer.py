@@ -105,6 +105,9 @@ def lex(code, debugLexer=False):
     unprocessed = code.strip()
     while unprocessed:
         lastWasValue = tokens and tokens[-1].name in Token.valueTokens
+        # Identify comments
+        if unprocessed[0] == '#':
+            break
         # Identify block-starting keywords
         match = re.match(r"(def|while|if)\b", unprocessed)
         if match:
