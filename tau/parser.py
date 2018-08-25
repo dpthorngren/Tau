@@ -7,6 +7,7 @@ import ast
 import dtypes
 import builtins
 import module
+from inputBuffer import InputBuffer
 
 
 class TauJIT():
@@ -58,12 +59,12 @@ class TauJIT():
 
     def runCommand(self, commandString):
         '''Runs a command (or series of commands) in the JIT session.'''
-        source = lexer.InputBuffer(commandString, self.quiet)
+        source = InputBuffer(commandString, self.quiet)
         return self._runFromSource_(source, True)
 
     def runREPL(self):
         '''Starts a REPL in the JIT session.'''
-        source = lexer.InputBuffer(sys.stdin, self.quiet)
+        source = InputBuffer(sys.stdin, self.quiet)
         if not self.quiet:
             print "TauREPL 0.1"
             print "Almost no features, massively buggy.  Good luck!"
@@ -88,7 +89,7 @@ def compileFile(filename, outputFile="a.out", debugIR=False, debugAST=False,
     m.ensureDeclared("printInt", '@printInt = global [4 x i8] c"%i\\0A\\00"')
     # Read through the source code to be compiled
     sourceFile = open(filename, 'r')
-    source = lexer.InputBuffer(sourceFile, quiet)
+    source = InputBuffer(sourceFile, quiet)
     while not source.end():
         parseTopLevel(m, source)
     sourceFile.close()
