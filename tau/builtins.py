@@ -3,10 +3,11 @@ import dtypes
 
 
 def freeMemory(inputs, token, mod):
-    if (len(token.data) != 1) or (token.data[0].name != "name"):
+    print len(token.data), token.data[1][0].name
+    if (len(token.data) != 2) or (token.data[1][0].name != "name"):
         raise ValueError("Free must be given exactly one variable name.")
-    allocID = mod.getAllocID(token.data[0].data, True)
-    var = name(inputs, token.data[0], mod)
+    allocID = mod.getAllocID(token.data[1][0].data, True)
+    var = name(inputs, token.data[1][0], mod)
     freeThis = mod.newRegister()
     mod.out += ["{} = bitcast {} {} to i8*".format(freeThis, var.irname, var.addr)]
     mod.freeMemory(allocID, freeThis)

@@ -3,162 +3,225 @@ import sys
 import dtypes
 
 
-class Token(object):
-    precedence = ['print', '=', '+=', '-=', '/=', '//=', '*=', '**=', '%=', 'and', 'or',
-                  'xor', '<=', '>=', '<', '>', '!=', '==',  '-', '+', '%', '*', '//', '/',
-                  '**', 'unary +', 'unary -', 'indexing', 'function', 'free', 'array',
-                  'literalArray', '()',  'literal', 'name', 'type']
-    valueTokens = ['function', 'array', '()', 'indexing', 'literal', 'name', 'type',
-                   'literalArray']
-
-    def __init__(self, name, data=None):
-        self.name = name
-        self.data = data
-
-    def getPrecedence(self):
-        return Token.precedence.index(self.name)
-
-
 def lex(code, debugLexer=False):
     tokens = []
     unprocessed = code.strip()
     while unprocessed:
-        lastWasValue = tokens and tokens[-1].name in Token.valueTokens
         # Identify comments
         if unprocessed[0] == '#':
             break
-        # Identify block-starting keywords
-        match = re.match(r"(def|while|if)\b", unprocessed)
-        if match:
-            if tokens:
-                raise ValueError("ERROR: Keyword {} must start the line.".format(match.group()))
-            tokens.append(Token(match.group()))
-            unprocessed = unprocessed[len(match.group()):-1].strip()
-            continue
-        # Identify for loop (currently only supports range(n))
-        match = re.match(r"for\b", unprocessed)
-        if match:
-            if tokens:
-                raise ValueError("ERROR: Keyword {} must start the line.".format(match.group()))
-            unprocessed = unprocessed[len(match.group()):-1].strip()
-            tokens.append(Token(match.group()))
-            continue
-        # Identify line-starting keywords
-        match = re.match(r"(print|end)\b", unprocessed)
-        if match:
-            if tokens:
-                raise ValueError("ERROR: Keyword {} must start the line.".format(match.group()))
-            tokens.append(Token(match.group()))
-            unprocessed = unprocessed[len(match.group()):].strip()
-            continue
-        # Identify other keywords
-        match = re.match(r"(in|and|or|xor)\b", unprocessed)
-        if match:
-            tokens.append(Token(match.group()))
-            unprocessed = unprocessed[len(match.group()):].strip()
-            assertLastValue(tokens)
-            continue
-        # Identify possibly unary symbols
-        match = re.match(r'(\+|-)(?!\*?/?=)', unprocessed)
-        if match:
-            if lastWasValue:  # Binary operator
-                tokens.append(Token(match.group()))
-            else:  # Unary operator
-                tokens.append(Token("unary "+match.group()))
-            unprocessed = unprocessed[len(match.group()):].strip()
-            continue
-        # Identify basic symbols
-        match = re.match(r'(,|\*\*?|%|//?|<=?|>=?|==)(?!\*?/?=)', unprocessed)
-        if match:
-            tokens.append(Token(match.group()))
-            unprocessed = unprocessed[len(match.group()):].strip()
-            assertLastValue(tokens)
-            continue
-        # Identify assignment operation
-        match = re.match(r'((\+|-|//?|\*\*?|%)?=)', unprocessed)
-        if match:
-            if len(tokens) == 1 and tokens[0].name == 'name':
-                tokens.append(Token(match.group(), tokens.pop(0).data))
-            elif len(tokens) > 1 and tokens[-1].name == "indexing":
-                tokens, left = [], tokens
-                tokens.append(Token(match.group(), left))
-            else:
-                raise ValueError("ERROR: Assignment must be immeditely follow variable name.")
-            unprocessed = unprocessed[len(match.group()):].strip()
-            continue
-        # Identify parentheses and function calls and eat the contents
-        if unprocessed.startswith("("):
-            right = findMatching(unprocessed)
-            if tokens and tokens[-1].name == "name":
-                # This is a function call!
-                caller = tokens.pop(-1).data
-                if caller in ["free"]:
-                    # This is a raw builtin function call
-                    tokens.append(Token(caller, lex(unprocessed[1:right])))
-                else:
-                    tokens.append(Token("function", [caller, lex(unprocessed[1:right])]))
-            else:
-                tokens.append(Token("()", lex(unprocessed[1:right])))
-            unprocessed = unprocessed[right+1:].strip()
-            continue
-        # Identify array literals and indexing operations
-        if unprocessed.startswith("["):
-            right = findMatching(unprocessed, left='[', right=']')
-            if lastWasValue and tokens[-1].name == "name" and tokens[-1].data in dtypes.baseTypes:
-                # This is an array creation operation
-                dtype = tokens.pop(-1).data
-                tokens.append(Token("array", [dtype, lex(unprocessed[1:right])]))
-            elif lastWasValue:
-                # This is an indexing operation
-                tokens.append(Token("indexing", lex(unprocessed[1:right])))
-            else:
-                tokens.append(Token("literalArray", lex(unprocessed[1:right])))
-            unprocessed = unprocessed[right+1:].strip()
-            continue
-        # Identify real literals
-        match = re.match(r"\d*\.\d*", unprocessed)
-        if match:
-            tokens.append(Token("literal", [dtypes.Real, float(match.group())]))
-            unprocessed = unprocessed[len(match.group()):].strip()
-            continue
-        # Identify int literals
-        match = re.match(r"\d+", unprocessed)
-        if match:
-            tokens.append(Token("literal", [dtypes.Int, int(match.group())]))
-            unprocessed = unprocessed[len(match.group()):].strip()
-            continue
-        # Identify bool literals
-        match = re.match(r"(True|False)", unprocessed)
-        if match:
-            tokens.append(Token("literal", [dtypes.Bool, match.group().lower()]))
-            unprocessed = unprocessed[len(match.group()):].strip()
-            continue
-        # Identify names and types
-        match = re.match(r"[a-zA-Z_]\w*", unprocessed)
-        if match:
-            tokens.append(Token("name", match.group()))
-            unprocessed = unprocessed[len(match.group()):].strip()
-            continue
+        # Check for errors
         if unprocessed.startswith(")"):
             raise ValueError("ERROR: Unmatched ending parenthesis.")
-        raise ValueError("ERROR: Cannot interpret code: {}".format(code))
+        # Search through tokens to find one that matches
+        for TokenType in Token.__subclasses__():
+            if TokenType.isMatch(unprocessed, tokens):
+                unprocessed = TokenType.appendNew(tokens, unprocessed)
+                break
+        else:
+            raise ValueError("ERROR: Cannot tokenize code from: {}".format(unprocessed))
     if debugLexer:
         sys.stderr.write("LEXER: "+code+" ===> "+str([t.name for t in tokens])+'\n')
     return tokens
 
 
-def assertLastValue(tokens):
-    '''Checks if the second most recent token was a value type and raises an error
-    if that isn't the case.  Value types are things like 3 and (2343**x) that
-    can be the left side of a binary operation, for example, and are listed in
-    Token.valueTypes.'''
-    if len(tokens) <= 1:
-        raise ValueError("ERROR: Token '{}' cannot start a line, it needs a value to its left."
-                         .format(tokens[0].name))
-    if tokens[-2].name not in Token.valueTokens:
-        raise ValueError("ERROR: token '{}' expected a value token to its left but found '{}'."
-                         .format(tokens[-1].name, tokens[-2].name))
-    return
+class Token(object):
+    precedence = ['print', '=', '+=', '-=', '/=', '//=', '*=', '**=', '%=', 'and', 'or',
+                  'xor', '<=', '>=', '<', '>', '!=', '==',  '-', '+', '%', '*', '//', '/',
+                  '**', 'unary +', 'unary -', 'indexing', 'function', 'array',
+                  'literalArray', '()',  'literal', 'name', 'type']
+
+    def getPrecedence(self):
+        return Token.precedence.index(self.name)
+
+    regex = None
+    isValue = False
+    startsLine = False
+    followsValue = False
+    endsWithColon = False
+    unary = False
+
+    def __init__(self, name, data=None):
+        self.name = name
+        self.data = data
+
+    @classmethod
+    def isMatch(cls, text, tokens):
+        if cls.unary and tokens and tokens[-1].isValue:
+            return False
+        return re.match(cls.regex, text)
+
+    @classmethod
+    def appendNew(cls, tokens, sourceString):
+        tokenString = re.match(cls.regex, sourceString).group()
+        newToken = cls(tokenString)
+        # Check for some syntax errors
+        if cls.startsLine and len(tokens) != 0:
+            raise ValueError("ERROR: Keyword {} must start the line.".format(tokenString))
+        if cls.followsValue and len(tokens) == 0:
+            raise ValueError("ERROR: Token '{}' cannot start a line, it needs a value to its left."
+                             .format(newToken.name))
+        if cls.followsValue and not tokens[-1].isValue:
+            raise ValueError("ERROR: token '{}' expected a value token to its left but found '{}'."
+                             .format(newToken.name, tokens[-1].name))
+        if cls.endsWithColon:
+            if sourceString[-1] != ':':
+                raise ValueError('ERROR: Lines using {} must end in ":".'.format(newToken.name))
+            sourceString = sourceString[:-1]
+        # Add the new token to the list and pop the corresponding part of the source string
+        tokens.append(newToken)
+        sourceString = tokens[-1].extraInit(tokens, sourceString)
+        return sourceString[len(tokenString):].strip()
+
+    def extraInit(self, tokens, sourceString):
+        return sourceString
+
+
+class BlockStarterToken(Token):
+    regex = r"(def|while|if|for)\b"
+    startsLine = True
+    endsWithColon = True
+
+
+class PrintToken(Token):
+    regex = r"Print\b"
+    startsLine = True
+
+
+class BasicToken(Token):
+    regex = r'(,|\*\*?|%|//?|<=?|>=?|==)(?!\*?/?=)|in|and|or|xor'
+    followsValue = True
+
+
+class RealLiteralToken(Token):
+    isValue = True
+    regex = r"\d*\.\d*"
+
+    def extraInit(self, tokens, sourceString):
+        self.data = [dtypes.Real, float(self.name)]
+        self.name = "literal"
+        return sourceString
+
+
+class IntLiteralToken(Token):
+    isValue = True
+    regex = r"\d+"
+
+    def extraInit(self, tokens, sourceString):
+        self.data = [dtypes.Int, int(self.name)]
+        self.name = "literal"
+        return sourceString
+
+
+class BoolLiteralToken(Token):
+    regex = r"(True|False)"
+    isValue = True
+
+    def extraInit(self, tokens, sourceString):
+        self.data = [dtypes.Bool, self.name.lower()]
+        self.name = "literal"
+        return sourceString
+
+
+class FunctionToken(Token):
+    isValue = True
+    regex = r"[a-zA-Z_]\w*\("
+
+    @classmethod
+    def appendNew(cls, tokens, sourceString):
+        tokenString = re.match(cls.regex, sourceString).group()
+        right = findMatching(sourceString, len(tokenString)-1)
+        caller = tokenString[:-1]
+        tokens.append(cls("function", [caller, lex(sourceString[len(tokenString):right])]))
+        sourceString = sourceString[right+1:].strip()
+        return sourceString
+
+
+class ParensToken(Token):
+    regex = r"\("
+    isValue = True
+
+    @classmethod
+    def appendNew(cls, tokens, sourceString):
+        right = findMatching(sourceString)
+        tokens.append(cls('()', lex(sourceString[1:right])))
+        sourceString = sourceString[right+1:].strip()
+        return sourceString
+
+
+class NameToken(Token):
+    regex = r"[a-zA-Z_]\w*"
+    isValue = True
+
+    def extraInit(self, tokens, sourceString):
+        self.data = self.name
+        self.name = "name"
+        return sourceString
+
+
+class AssignmentToken(Token):
+    regex = r'((\+|-|//?|\*\*?|%)?=)'
+
+    @classmethod
+    def appendNew(cls, tokens, sourceString):
+        tokenString = re.match(cls.regex, sourceString).group()
+        if len(tokens) == 1 and tokens[0].name == 'name':
+            tokens.append(cls(tokenString, tokens.pop(0).data))
+        elif len(tokens) > 1 and tokens[-1].name == "indexing":
+            tokens.append(cls(tokenString, tokens[:]))
+            del tokens[:-1]
+        else:
+            raise ValueError("ERROR: Assignment must be immeditely follow variable name.")
+        return sourceString[len(tokenString):].strip()
+
+
+class ArrayToken(Token):
+    isValue = True
+    regex = r"\["
+
+    @classmethod
+    def appendNew(cls, tokens, sourceString):
+        # Identify array literals and indexing operations
+        right = findMatching(sourceString, left='[', right=']')
+        lastWasValue = tokens and tokens[-1].isValue
+        if lastWasValue and tokens[-1].name == "name" and tokens[-1].data in dtypes.baseTypes:
+            # This is an array creation operation
+            dtype = tokens.pop(-1).data
+            tokens.append(cls("array", [dtype, lex(sourceString[1:right])]))
+        elif lastWasValue:
+            # This is an indexing operation
+            tokens.append(cls("indexing", lex(sourceString[1:right])))
+        else:
+            tokens.append(cls("literalArray", lex(sourceString[1:right])))
+        return sourceString[right+1:].strip()
+
+
+class UnaryPlusToken(Token):
+    regex = r'\+'
+    unary = True
+
+    def extraInit(self, tokens, sourceString):
+        # TODO: Remove once checking is no longer based on name
+        self.name = 'unary +'
+        return sourceString
+
+
+class UnaryMinusToken(Token):
+    regex = r'-'
+    unary = True
+
+    def extraInit(self, tokens, sourceString):
+        # TODO: Remove once checking is no longer based on name
+        self.name = 'unary -'
+        return sourceString
+
+
+class BinaryPlusToken(Token):
+    regex = r'\+'
+
+
+class BinaryMinusToken(Token):
+    regex = r'-'
 
 
 def findMatching(s, start=0, left='(', right=')'):

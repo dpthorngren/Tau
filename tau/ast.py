@@ -97,8 +97,6 @@ class ASTNode():
             self.dtype = self.children[0].dtype
             self.children = [i.castTo(self.dtype) for i in self.children]
             self.dtype = dtypes.Array(self.dtype)
-        elif self.token.name == "free":
-            self.dtype = None
         else:
             raise ValueError("ERROR: Can't parse:'{}'.\n".format(self.token.name))
         # Resolve the types given the child types and available builtins.
@@ -161,7 +159,7 @@ class ASTNode():
 
 def assertEmpty(left, right=[]):
     if left or right:
-        raise ValueError("ERROR: Unexpected tokens {}", left+right)
+        raise ValueError("ERROR: Unexpected tokens {}".format(left+right))
     return
 
 
