@@ -26,14 +26,7 @@ def lex(code, debugLexer=False):
 
 
 class Token(object):
-    precedence = ['print', '=', '+=', '-=', '/=', '//=', '*=', '**=', '%=', 'and', 'or',
-                  'xor', '<=', '>=', '<', '>', '!=', '==',  '-', '+', '%', '*', '//', '/',
-                  '**', 'unary +', 'unary -', 'indexing', 'function', 'array',
-                  'literalArray', '()',  'literal', 'name', 'type']
-
-    def getPrecedence(self):
-        return Token.precedence.index(self.name)
-
+    precedence = 999
     regex = None
     isValue = False
     startsLine = False
@@ -77,6 +70,24 @@ class Token(object):
         return sourceString
 
 
+class AssignmentToken(Token):
+    regex = r'((\+|-|//?|\*\*?|%)?=(?!=))'
+    precedence = 1
+
+    @classmethod
+    def appendNew(cls, tokens, sourceString):
+        tokenString = re.match(cls.regex, sourceString).group()
+        if len(tokens) == 1 and tokens[0].name == 'name':
+            tokens.append(cls(tokenString, tokens.pop(0).data))
+        elif len(tokens) > 1 and tokens[-1].name == "indexing":
+            tokens.append(cls(tokenString, tokens[:]))
+            del tokens[:-1]
+        else:
+            raise ValueError("ERROR: Assignment must be immeditely follow variable name in {}"
+                             .format(sourceString))
+        return sourceString[len(tokenString):].strip()
+
+
 class BlockStarterToken(Token):
     regex = r"(def|while|if|for)\b"
     startsLine = True
@@ -84,18 +95,43 @@ class BlockStarterToken(Token):
 
 
 class PrintToken(Token):
+    precedence = 0
     regex = r"Print\b"
     startsLine = True
 
 
-class BasicToken(Token):
-    regex = r'(,|\*\*?|%|//?|<=?|>=?|==)(?!\*?/?=)|in|and|or|xor'
+class BoolOperatorTokens(Token):
+    regex = r'(and|or|xor)'
+    precedence = 2
+    followsValue = True
+
+
+class StructuralToken(Token):
+    regex = r'(,|in)'
+
+
+class ExponentToken(Token):
+    regex = r'\*\*(?!=)'
+    precedence = 6
+    followsValue = True
+
+
+class MultiplyFamilyToken(Token):
+    regex = r'(\*|%|//?)(?!=)'
+    precedence = 5
+    followsValue = True
+
+
+class RelationalTokens(Token):
+    regex = r'(<=?|>=?|==)'
+    precedence = 3
     followsValue = True
 
 
 class RealLiteralToken(Token):
-    isValue = True
     regex = r"\d*\.\d*"
+    precedence = 9
+    isValue = True
 
     def extraInit(self, tokens, sourceString):
         self.data = [dtypes.Real, float(self.name)]
@@ -104,8 +140,9 @@ class RealLiteralToken(Token):
 
 
 class IntLiteralToken(Token):
-    isValue = True
     regex = r"\d+"
+    precedence = 9
+    isValue = True
 
     def extraInit(self, tokens, sourceString):
         self.data = [dtypes.Int, int(self.name)]
@@ -115,6 +152,7 @@ class IntLiteralToken(Token):
 
 class BoolLiteralToken(Token):
     regex = r"(True|False)"
+    precedence = 9
     isValue = True
 
     def extraInit(self, tokens, sourceString):
@@ -124,8 +162,9 @@ class BoolLiteralToken(Token):
 
 
 class FunctionToken(Token):
-    isValue = True
     regex = r"[a-zA-Z_]\w*\("
+    precedence = 8
+    isValue = True
 
     @classmethod
     def appendNew(cls, tokens, sourceString):
@@ -139,6 +178,7 @@ class FunctionToken(Token):
 
 class ParensToken(Token):
     regex = r"\("
+    precedence = 8
     isValue = True
 
     @classmethod
@@ -151,6 +191,7 @@ class ParensToken(Token):
 
 class NameToken(Token):
     regex = r"[a-zA-Z_]\w*"
+    precedence = 9
     isValue = True
 
     def extraInit(self, tokens, sourceString):
@@ -159,25 +200,10 @@ class NameToken(Token):
         return sourceString
 
 
-class AssignmentToken(Token):
-    regex = r'((\+|-|//?|\*\*?|%)?=)'
-
-    @classmethod
-    def appendNew(cls, tokens, sourceString):
-        tokenString = re.match(cls.regex, sourceString).group()
-        if len(tokens) == 1 and tokens[0].name == 'name':
-            tokens.append(cls(tokenString, tokens.pop(0).data))
-        elif len(tokens) > 1 and tokens[-1].name == "indexing":
-            tokens.append(cls(tokenString, tokens[:]))
-            del tokens[:-1]
-        else:
-            raise ValueError("ERROR: Assignment must be immeditely follow variable name.")
-        return sourceString[len(tokenString):].strip()
-
-
 class ArrayToken(Token):
-    isValue = True
     regex = r"\["
+    precedence = 8
+    isValue = True
 
     @classmethod
     def appendNew(cls, tokens, sourceString):
@@ -198,6 +224,7 @@ class ArrayToken(Token):
 
 class UnaryPlusToken(Token):
     regex = r'\+'
+    precedence = 7
     unary = True
 
     def extraInit(self, tokens, sourceString):
@@ -208,6 +235,7 @@ class UnaryPlusToken(Token):
 
 class UnaryMinusToken(Token):
     regex = r'-'
+    precedence = 7
     unary = True
 
     def extraInit(self, tokens, sourceString):
@@ -218,10 +246,12 @@ class UnaryMinusToken(Token):
 
 class BinaryPlusToken(Token):
     regex = r'\+'
+    precedence = 4
 
 
 class BinaryMinusToken(Token):
     regex = r'-'
+    precedence = 4
 
 
 def findMatching(s, start=0, left='(', right=')'):

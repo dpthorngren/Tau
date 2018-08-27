@@ -1,7 +1,7 @@
 import sys
 import dtypes
 import builtins
-from lexer import Token
+import lexer
 
 
 class ASTNode():
@@ -13,11 +13,11 @@ class ASTNode():
         if tokens is None:
             return
         # Find the token of lowest precedence
-        index, self.token = min(enumerate(tokens), key=lambda t: t[1].getPrecedence())
+        index, self.token = min(enumerate(tokens[::-1]), key=lambda t: t[1].precedence)
+        index = len(tokens) - index - 1
         leftTokens, rightTokens = tokens[:index], tokens[index+1:]
         if module.debugAST:
-            sys.stderr.write("AST: "+self.token.name+', ' +
-                             str(self.token.data)+"\n")
+            sys.stderr.write("AST: "+self.token.name+', ' + str(self.token.data)+"\n")
         # Now, construct the node according to the operator found
         if self.token.name == "print":
             assertEmpty(leftTokens)
@@ -29,8 +29,18 @@ class ASTNode():
                 if type(self.token.data) is list:
                     left = self.token.data
                 else:
-                    left = [Token('name', self.token.data)]
-                rightTokens = left + [Token(self.token.name[:-1]), Token('()', rightTokens)]
+                    left = [lexer.NameToken('name', self.token.data)]
+                # TODO: replace this ugly hack with a proper builtin function
+                TokenType = {
+                    '+=': lexer.BinaryPlusToken,
+                    '-=': lexer.BinaryMinusToken,
+                    '/=': lexer.MultiplyFamilyToken,
+                    '//=': lexer.MultiplyFamilyToken,
+                    '**=': lexer.ExponentToken,
+                    '*=': lexer.MultiplyFamilyToken,
+                    '%=': lexer.MultiplyFamilyToken}[self.token.name]
+                rightTokens = left + [TokenType(self.token.name[:-1]),
+                                      lexer.ParensToken('()', rightTokens)]
                 self.token.name = '='
             if type(self.token.data) is list:
                 # Array indexing assignment
@@ -150,7 +160,7 @@ class ASTNode():
             raise ValueError("ERROR: Won't automatically convert type {} to type {}."
                              .format(self.dtype, dtype))
         converterNode = ASTNode(None, self.module)
-        converterNode.token = Token("Convert", dtype)
+        converterNode.token = lexer.Token("Convert", dtype)
         converterNode.children = [self]
         converterNode.dtype = dtype
         converterNode.evaluator = builtins.convert
